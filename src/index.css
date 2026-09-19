@@ -1,0 +1,286 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
+/* Custom sleek dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.6);
+}
+
+/* Custom styled range slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(51, 65, 85, 0.6);
+  border-radius: 9999px;
+  height: 6px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #818cf8;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(129, 140, 248, 0.5);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  background: #a5b4fc;
+}
+
+/* ------------------------------------------------------------- */
+/* Crisp, High-Contrast Modern Light Theme Overrides             */
+/* ------------------------------------------------------------- */
+html.light,
+.light-mode {
+  color-scheme: light;
+}
+
+/* Eliminate weird/harsh text shadows in light mode completely */
+.light-mode,
+.light-mode * {
+  text-shadow: none !important;
+}
+
+/* Fresh, crisp, comfortable background */
+.light-mode {
+  background-color: #f8fafc !important; /* Crisp Slate-50 */
+  color: #0f172a !important; /* Deep Slate-900 for ultra-clear legibility */
+}
+
+/* Crisp elevated cards on light background */
+.light-mode .bg-slate-900,
+.light-mode .bg-slate-900\/60,
+.light-mode .bg-slate-900\/70,
+.light-mode .bg-slate-900\/80,
+.light-mode .bg-slate-900\/90,
+.light-mode .bg-slate-900\/95 {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 2px 8px -2px rgba(15, 23, 42, 0.08), 0 1px 3px -1px rgba(15, 23, 42, 0.04) !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Insets, wells, and inner recessed panels in light mode */
+.light-mode .bg-slate-950,
+.light-mode .bg-slate-950\/40,
+.light-mode .bg-slate-950\/60,
+.light-mode .bg-slate-950\/70,
+.light-mode .bg-slate-950\/80,
+.light-mode .bg-slate-950\/90 {
+  background-color: #f1f5f9 !important; /* Soft Slate-100 */
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Crisp borders */
+.light-mode .border-slate-800,
+.light-mode .border-slate-800\/80,
+.light-mode .border-slate-800\/90,
+.light-mode .border-slate-800\/50,
+.light-mode .border-slate-700,
+.light-mode .border-slate-700\/80,
+.light-mode .border-slate-900 {
+  border-color: #e2e8f0 !important;
+}
+
+/* High-contrast typography in light mode */
+.light-mode .text-slate-100,
+.light-mode .text-white {
+  color: #0f172a !important; /* Slate-900 */
+}
+
+.light-mode .text-slate-200,
+.light-mode .text-slate-300 {
+  color: #1e293b !important; /* Slate-800 */
+}
+
+.light-mode .text-slate-400 {
+  color: #475569 !important; /* Slate-600 */
+}
+
+.light-mode .text-slate-500 {
+  color: #64748b !important; /* Slate-500 */
+}
+
+/* Vivid, high-contrast semantic accents for Light Theme */
+.light-mode .text-indigo-400,
+.light-mode .text-indigo-300,
+.light-mode .text-indigo-200 {
+  color: #3730a3 !important; /* Indigo-800 */
+}
+
+.light-mode .text-amber-400,
+.light-mode .text-amber-300,
+.light-mode .text-amber-200 {
+  color: #92400e !important; /* Amber-800 - dark rich amber for perfect contrast */
+}
+
+.light-mode .text-emerald-400,
+.light-mode .text-emerald-300,
+.light-mode .text-emerald-200 {
+  color: #065f46 !important; /* Emerald-800 */
+}
+
+.light-mode .text-sky-400,
+.light-mode .text-sky-300,
+.light-mode .text-sky-200 {
+  color: #0369a1 !important; /* Sky-700 */
+}
+
+.light-mode .text-rose-400,
+.light-mode .text-rose-300,
+.light-mode .text-rose-200 {
+  color: #991b1b !important; /* Rose-800 */
+}
+
+/* Accent Badges, Chips and Highlight Wells */
+.light-mode .bg-indigo-950,
+.light-mode .bg-indigo-950\/40,
+.light-mode .bg-indigo-950\/70,
+.light-mode .bg-indigo-950\/80,
+.light-mode .bg-indigo-600\/20,
+.light-mode .bg-indigo-600\/30 {
+  background-color: #e0e7ff !important; /* Indigo-100 */
+  color: #312e81 !important; /* Indigo-900 */
+  border-color: #c7d2fe !important;
+}
+
+.light-mode .bg-amber-950,
+.light-mode .bg-amber-950\/70,
+.light-mode .bg-amber-500\/15,
+.light-mode .bg-amber-500\/20,
+.light-mode .bg-amber-600\/30 {
+  background-color: #fef3c7 !important; /* Amber-100 */
+  color: #78350f !important; /* Amber-900 */
+  border-color: #fde68a !important;
+}
+
+.light-mode .bg-emerald-950,
+.light-mode .bg-emerald-950\/70,
+.light-mode .bg-emerald-500\/20,
+.light-mode .bg-emerald-600\/30 {
+  background-color: #d1fae5 !important; /* Emerald-100 */
+  color: #064e3b !important; /* Emerald-900 */
+  border-color: #a7f3d0 !important;
+}
+
+.light-mode .bg-sky-500\/20,
+.light-mode .bg-sky-600\/30 {
+  background-color: #e0f2fe !important; /* Sky-100 */
+  color: #0c4a6e !important; /* Sky-900 */
+  border-color: #bae6fd !important;
+}
+
+.light-mode .bg-rose-950,
+.light-mode .bg-rose-950\/70,
+.light-mode .bg-rose-500\/20 {
+  background-color: #fee2e2 !important; /* Rose-100 */
+  color: #7f1d1d !important; /* Rose-900 */
+  border-color: #fecaca !important;
+}
+
+/* Secondary Button Styles in Light Mode */
+.light-mode .bg-slate-800,
+.light-mode .bg-slate-800\/80,
+.light-mode .bg-slate-800\/60,
+.light-mode .bg-slate-800\/40 {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+.light-mode .hover\:bg-slate-800:hover,
+.light-mode .hover\:bg-slate-700:hover {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Primary CTA Buttons */
+.light-mode .bg-gradient-to-r.from-indigo-600 {
+  background-image: none !important;
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+  border-color: #4338ca !important;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3) !important;
+}
+
+.light-mode .bg-gradient-to-r.from-indigo-600:hover {
+  background-color: #4338ca !important;
+}
+
+.light-mode .bg-gradient-to-r.from-indigo-600 * {
+  color: #ffffff !important;
+}
+
+.light-mode .bg-indigo-600 {
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+}
+
+.light-mode .bg-indigo-600:hover {
+  background-color: #4338ca !important;
+}
+
+.light-mode .bg-indigo-600 * {
+  color: #ffffff !important;
+}
+
+.light-mode .bg-emerald-600 {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+}
+
+.light-mode .bg-emerald-600 * {
+  color: #ffffff !important;
+}
+
+/* Form selects & inputs in Light Mode */
+.light-mode select,
+.light-mode input[type="text"] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Fixed Bottom Dock in Light Theme matches fresh background */
+.light-mode .fixed-bottom-dock {
+  background: linear-gradient(to top, rgba(248, 250, 252, 0.98) 75%, rgba(248, 250, 252, 0) 100%) !important;
+}
+
+/* Scrollbar in Light Theme */
+.light-mode ::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.light-mode ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

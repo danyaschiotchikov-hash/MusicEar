@@ -1,0 +1,6 @@
+{
+  "name": "Тренажер музыкального слуха",
+  "description": "Интерактивный тренажер музыкальных интервалов, аккордов и ладов на слух с психоакустическим Web Audio движком и гибкими настройками.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
