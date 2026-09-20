@@ -4,7 +4,9 @@ import {
   Sparkles,
   Layers,
   Sliders,
+  RotateCcw,
   Activity,
+  Compass,
 } from 'lucide-react';
 
 export type QuickCategoryKey =
@@ -12,7 +14,9 @@ export type QuickCategoryKey =
   | 'characteristic_intervals'
   | 'triads'
   | 'seventh_chords'
-  | 'scales';
+  | 'd7_inversions'
+  | 'scales'
+  | 'modes';
 
 export interface QuickCategoryItem {
   key: QuickCategoryKey;
@@ -49,14 +53,28 @@ export const QUICK_CATEGORIES: QuickCategoryItem[] = [
     label: 'Септаккорды',
     shortLabel: 'Септ.',
     icon: Sliders,
-    categoryIds: ['seventh_chords', 'd7_inversions'],
+    categoryIds: ['seventh_chords'],
+  },
+  {
+    key: 'd7_inversions',
+    label: 'Обращения D7',
+    shortLabel: 'Обр. D7',
+    icon: RotateCcw,
+    categoryIds: ['d7_inversions'],
   },
   {
     key: 'scales',
-    label: 'Лады / Гаммы',
-    shortLabel: 'Лады',
+    label: 'Гаммы',
+    shortLabel: 'Гаммы',
     icon: Activity,
-    categoryIds: ['scales', 'modes'],
+    categoryIds: ['scales'],
+  },
+  {
+    key: 'modes',
+    label: 'Лады',
+    shortLabel: 'Лады',
+    icon: Compass,
+    categoryIds: ['modes'],
   },
 ];
 
@@ -71,8 +89,8 @@ export const CategoryChips: React.FC<CategoryChipsProps> = ({
 }) => {
   return (
     <div className="w-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-xl p-1 sm:p-1.5 shadow-sm">
-      {/* Exactly 5 buttons with multi-select support */}
-      <div className="grid grid-cols-5 gap-1 sm:gap-1.5 w-full">
+      {/* Exactly 7 buttons in a row */}
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 w-full">
         {QUICK_CATEGORIES.map((cat) => {
           const isSelected = selectedCategories.includes(cat.key);
           const IconComponent = cat.icon;
@@ -82,7 +100,7 @@ export const CategoryChips: React.FC<CategoryChipsProps> = ({
               key={cat.key}
               type="button"
               onClick={() => onToggleCategory(cat.key)}
-              className={`flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 py-1.5 px-0.5 sm:px-1.5 rounded-lg text-[10px] sm:text-xs transition active:scale-[0.97] cursor-pointer border ${
+              className={`flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 py-1.5 px-0.5 sm:px-1.5 rounded-lg text-[9px] sm:text-xs transition active:scale-[0.97] cursor-pointer border ${
                 isSelected
                   ? 'bg-indigo-600 text-white border-indigo-400/90 shadow-sm shadow-indigo-950 font-bold ring-1 ring-indigo-400/40'
                   : 'bg-slate-950/40 hover:bg-slate-800/60 text-slate-300 hover:text-slate-100 border-slate-800/80 font-medium'
@@ -90,14 +108,14 @@ export const CategoryChips: React.FC<CategoryChipsProps> = ({
               title={`${cat.label} (кликните для выбора/снятия)`}
             >
               <IconComponent
-                className={`w-3.5 h-3.5 shrink-0 ${
+                className={`w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 ${
                   isSelected ? 'text-white' : 'text-indigo-400'
                 }`}
               />
-              <span className="truncate whitespace-nowrap hidden sm:inline">
+              <span className="truncate whitespace-nowrap hidden md:inline">
                 {cat.label}
               </span>
-              <span className="truncate whitespace-nowrap sm:hidden">
+              <span className="truncate whitespace-nowrap md:hidden">
                 {cat.shortLabel || cat.label}
               </span>
             </button>

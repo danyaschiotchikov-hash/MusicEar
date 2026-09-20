@@ -1,5 +1,6 @@
 import { MusicItem, PlaybackSettings } from '../types';
 import { calculateItemNotes } from './solfegeHelper';
+import { RealizedProgression } from './harmonicProgressions';
 
 export interface SalamanderAnchor {
   note: string;
@@ -71,13 +72,43 @@ class AudioEngine {
     const ctx = this.getContext();
     let loadedCount = 0;
 
+    // Try to open CacheStorage for audio sample persistence across sessions/offline
+    let cache: Cache | null = null;
+    try {
+      if (typeof caches !== 'undefined') {
+        cache = await caches.open('salamander-piano-samples-v1');
+      }
+    } catch {
+      cache = null;
+    }
+
     try {
       await Promise.all(
         SALAMANDER_ANCHORS.map(async (anchor) => {
           try {
-            const resp = await fetch(anchor.url, { mode: 'cors' });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const arrayBuffer = await resp.arrayBuffer();
+            let arrayBuffer: ArrayBuffer | null = null;
+
+            if (cache) {
+              const cachedResp = await cache.match(anchor.url);
+              if (cachedResp) {
+                arrayBuffer = await cachedResp.arrayBuffer();
+              }
+            }
+
+            if (!arrayBuffer) {
+              const resp = await fetch(anchor.url, { mode: 'cors' });
+              if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+              if (cache) {
+                // Clone response to put into cache for future offline usage
+                try {
+                  await cache.put(anchor.url, resp.clone());
+                } catch {
+                  // Cache put error ignored
+                }
+              }
+              arrayBuffer = await resp.arrayBuffer();
+            }
+
             const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
             this.sampleBuffers.set(anchor.midi, audioBuffer);
             loadedCount++;
@@ -365,7 +396,7 @@ class AudioEngine {
     });
   }
 
-  private playSingleNote(
+  public playSingleNote(
     midi: number,
     startTime: number,
     duration: number,
@@ -560,69 +591,71 @@ class AudioEngine {
       return 1.0;
     };
 
-    // 1. CHARACTERISTIC INTERVALS:
-    // 4 sounds total. First 2 sounds are Interval 1 (in arpeggio they sound sequentially,
-    // layering onto each other). Then Interval 2 (resolution) sounds.
-    if (isCharacteristic) {
-      const resSemitones = item.resolutionSemitones || [0, 5];
+    // 1. CHARACTERISTIC INTERVALS & D7 INVERSIONS RESOLUTIONS:
+    const hasResolution =
+      item.category === 'characteristic_intervals' ||
+      item.category === 'd7_inversions' ||
+      item.id === 'seventh_mb7';
+
+    if (hasResolution) {
+      const resSemitones = item.resolutionSemitones || (item.category === 'seventh_chords' ? [5, 5, 5, 9] : [0, 5]);
       let firstMidis: number[];
       let resMidis: number[];
 
       if (invertPlayOrder && effectiveDirection === 'down') {
-        // Same sounds in descending sequence
-        firstMidis = [rootMidi + item.semitones[1], rootMidi + item.semitones[0]];
-        resMidis = [rootMidi + resSemitones[1], rootMidi + resSemitones[0]];
+        firstMidis = item.semitones.map((s) => rootMidi + s).reverse();
+        resMidis = resSemitones.map((s) => rootMidi + s).reverse();
       } else if (effectiveDirection === 'down') {
-        const span = item.semitones[1] - item.semitones[0];
-        firstMidis = [rootMidi, rootMidi - span];
-        resMidis = [rootMidi + (resSemitones[1] - item.semitones[1]), (rootMidi - span) + resSemitones[0]];
+        // Downward construction / playback: rootMidi is the highest note.
+        // Calculate notes descending from rootMidi:
+        firstMidis = calculateItemNotes(item, rootMidi, 'down');
+        const bassMidi = Math.min(...firstMidis);
+        resMidis = resSemitones.map((s) => bassMidi + s).reverse();
       } else {
-        firstMidis = [rootMidi + item.semitones[0], rootMidi + item.semitones[1]];
-        resMidis = [rootMidi + resSemitones[0], rootMidi + resSemitones[1]];
+        firstMidis = calculateItemNotes(item, rootMidi, 'up');
+        resMidis = resSemitones.map((s) => rootMidi + s);
       }
 
       if (settings.style === 'arpeggio') {
-        const stepDur = 0.23 / settings.tempo; // slightly faster than simple intervals
+        const stepDur = (item.semitones.length > 2 ? 0.20 : 0.24) / settings.tempo;
         const noteDur = stepDur * (1.2 + settings.resonance * 1.5);
-        const gap = 0.16 / settings.tempo;
+        const gap = 0.18 / settings.tempo;
 
-        // Interval 1: 2 sounds sequentially, layering on each other
-        this.playSingleNote(firstMidis[0], now, noteDur, getPsychoacousticGain(firstMidis[0]), settings);
-        this.playSingleNote(firstMidis[1], now + stepDur, noteDur, getPsychoacousticGain(firstMidis[1]), settings);
-
-        if (onVisualNotes) {
-          onVisualNotes([firstMidis[0]]);
+        // Play chord/interval sequentially (arpeggio)
+        const activeFirst: number[] = [];
+        firstMidis.forEach((m, idx) => {
+          this.playSingleNote(m, now + idx * stepDur, noteDur, getPsychoacousticGain(m), settings);
           this.scheduleTimeout(() => {
-            if (onVisualNotes) onVisualNotes([firstMidis[0], firstMidis[1]]);
-          }, stepDur * 1000);
-        }
+            activeFirst.push(m);
+            if (onVisualNotes) onVisualNotes([...activeFirst]);
+          }, idx * stepDur * 1000);
+        });
 
-        // Interval 2 (Resolution): 2 sounds sequentially, layering on each other
-        const resStart = now + 2 * stepDur + gap;
-        const resNoteDur = noteDur * 1.25;
+        // Resolution playback in arpeggio style as well
+        const resStart = now + firstMidis.length * stepDur + gap;
+        const resStepDur = (resMidis.length > 2 ? 0.22 : 0.26) / settings.tempo;
+        const resNoteDur = resStepDur * (1.3 + settings.resonance * 1.5);
 
-        this.playSingleNote(resMidis[0], resStart, resNoteDur, getPsychoacousticGain(resMidis[0]), settings);
-        this.playSingleNote(resMidis[1], resStart + stepDur, resNoteDur, getPsychoacousticGain(resMidis[1]), settings);
+        const activeRes: number[] = [];
+        resMidis.forEach((m, idx) => {
+          this.playSingleNote(m, resStart + idx * resStepDur, resNoteDur, getPsychoacousticGain(m), settings);
+          this.scheduleTimeout(() => {
+            activeRes.push(m);
+            if (onVisualNotes) onVisualNotes([...activeRes]);
+          }, (firstMidis.length * stepDur + gap + idx * resStepDur) * 1000);
+        });
 
-        this.scheduleTimeout(() => {
-          if (onVisualNotes) onVisualNotes([resMidis[0]]);
-        }, (2 * stepDur + gap) * 1000);
-
-        this.scheduleTimeout(() => {
-          if (onVisualNotes) onVisualNotes([resMidis[0], resMidis[1]]);
-        }, (3 * stepDur + gap) * 1000);
-
-        const totalTime = resStart + 2 * stepDur + resNoteDur * (settings.decay || 1.0);
+        const totalTime = resStart + resMidis.length * resStepDur + resNoteDur * (settings.decay || 1.0);
         this.scheduleTimeout(() => {
           if (onVisualNotes) onVisualNotes([]);
         }, totalTime * 1000);
 
         return;
       } else {
-        // Harmonic: first 2 notes together, then resolution 2 notes together
-        const chordDur = 0.85 / settings.tempo;
-        const resDur = 1.05 / settings.tempo;
-        const gap = 0.06;
+        // Harmonic: first chord together, then resolution chord together
+        const chordDur = 0.9 / settings.tempo;
+        const resDur = 1.2 / settings.tempo;
+        const gap = 0.10;
 
         for (const m of firstMidis) {
           this.playSingleNote(m, now, chordDur, getPsychoacousticGain(m), settings);
@@ -708,6 +741,346 @@ class AudioEngine {
         if (onVisualNotes) onVisualNotes([]);
       }, totalTime * 1000);
     }
+  }
+
+  /**
+   * Plays a Tonal Ear Training task with base note and smart-voiced target chord.
+   * Supports timing parameter (negative for overlap, positive for memory pause).
+   */
+  public playTonalTask(
+    baseMidi: number,
+    chordMidis: number[],
+    timingSeconds: number,
+    settings: PlaybackSettings,
+    onVisualNotes?: (midis: number[]) => void
+  ) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime;
+
+    const baseDur = 1.0 / settings.tempo;
+    const chordDur = 1.8 / settings.tempo;
+
+    // 1. Play base note
+    this.playSingleNote(baseMidi, now, baseDur, 1.25, settings);
+    if (onVisualNotes) {
+      onVisualNotes([baseMidi]);
+    }
+
+    // 2. Chord start time
+    // If timingSeconds < 0: overlap while base is still sounding
+    // If timingSeconds > 0: silence pause after base note finishes
+    let chordStartTime = now + baseDur;
+    if (timingSeconds < 0) {
+      const overlapOffset = Math.max(0.25, baseDur + timingSeconds);
+      chordStartTime = now + overlapOffset;
+    } else {
+      chordStartTime = now + baseDur + timingSeconds;
+    }
+
+    const chordDelayMs = Math.max(0, (chordStartTime - now) * 1000);
+
+    // 3. Play chord
+    const bassMidi = Math.min(...chordMidis);
+    if (settings.style === 'arpeggio') {
+      const stepDur = 0.22 / settings.tempo;
+      const noteDur = stepDur * (1.2 + settings.resonance * 1.5);
+
+      this.scheduleTimeout(() => {
+        const activeChord: number[] = [];
+        chordMidis.forEach((m, idx) => {
+          const gain = m === bassMidi ? 1.25 : (m === baseMidi ? 1.20 : 1.0);
+          this.playSingleNote(m, chordStartTime + idx * stepDur, noteDur, gain, settings);
+          this.scheduleTimeout(() => {
+            activeChord.push(m);
+            if (onVisualNotes) onVisualNotes([baseMidi, ...activeChord]);
+          }, idx * stepDur * 1000);
+        });
+      }, chordDelayMs);
+
+      const totalEndMs = (chordStartTime + chordMidis.length * stepDur + noteDur * (settings.decay || 1.0) - now) * 1000;
+      this.scheduleTimeout(() => {
+        if (onVisualNotes) onVisualNotes([]);
+      }, totalEndMs);
+    } else {
+      // Harmonic
+      this.scheduleTimeout(() => {
+        for (const m of chordMidis) {
+          const gain = m === bassMidi ? 1.25 : (m === baseMidi ? 1.20 : 1.0);
+          this.playSingleNote(m, chordStartTime, chordDur, gain, settings);
+        }
+        if (onVisualNotes) {
+          onVisualNotes([baseMidi, ...chordMidis]);
+        }
+      }, chordDelayMs);
+
+      const totalEndMs = (chordStartTime + chordDur * (settings.decay || 1.0) - now) * 1000;
+      this.scheduleTimeout(() => {
+        if (onVisualNotes) onVisualNotes([]);
+      }, totalEndMs);
+    }
+  }
+
+  /**
+   * Replay only the chord part of a tonal task, respecting arpeggio / harmonic style
+   */
+  public playTonalChordOnly(
+    chordMidis: number[],
+    baseMidi: number,
+    settings: PlaybackSettings,
+    onVisualNotes?: (midis: number[]) => void,
+    onFinish?: () => void
+  ) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime + 0.01;
+    const bassMidi = Math.min(...chordMidis);
+
+    if (settings.style === 'arpeggio') {
+      const stepDur = 0.22 / settings.tempo;
+      const noteDur = stepDur * (1.2 + settings.resonance * 1.5);
+      const activeChord: number[] = [];
+
+      chordMidis.forEach((m, idx) => {
+        const gain = m === bassMidi ? 1.25 : (m === baseMidi ? 1.20 : 1.0);
+        this.playSingleNote(m, now + idx * stepDur, noteDur, gain, settings);
+        this.scheduleTimeout(() => {
+          activeChord.push(m);
+          if (onVisualNotes) onVisualNotes([...activeChord]);
+        }, idx * stepDur * 1000);
+      });
+
+      const totalEndMs = (chordMidis.length * stepDur + noteDur * (settings.decay || 1.0)) * 1000;
+      this.scheduleTimeout(() => {
+        if (onVisualNotes) onVisualNotes([]);
+        if (onFinish) onFinish();
+      }, totalEndMs);
+    } else {
+      const chordDur = 1.8 / settings.tempo;
+      for (const m of chordMidis) {
+        const gain = m === bassMidi ? 1.25 : (m === baseMidi ? 1.20 : 1.0);
+        this.playSingleNote(m, now, chordDur, gain, settings);
+      }
+      if (onVisualNotes) {
+        onVisualNotes(chordMidis);
+      }
+      const totalEndMs = chordDur * (settings.decay || 1.0) * 1000;
+      this.scheduleTimeout(() => {
+        if (onVisualNotes) onVisualNotes([]);
+        if (onFinish) onFinish();
+      }, totalEndMs);
+    }
+  }
+
+  /**
+   * Authentic Dominant Seventh to Tonic Cadence (D7 -> T / D7 -> t):
+   * Provides immediate, decisive tonal orientation through dominant tension resolving to tonic.
+   */
+  public playKeyCadence(
+    tonicPitch: number,
+    scaleMode: 'major' | 'minor',
+    settings: PlaybackSettings,
+    onVisualNotes?: (midis: number[]) => void,
+    onFinish?: () => void
+  ) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime + 0.01;
+
+    // Pick comfortable tonic in octave 3/4 (MIDI 48..59)
+    let t = 48 + (((tonicPitch % 12) + 12) % 12);
+    if (t < 48) t += 12;
+    if (t > 57) t -= 12;
+
+    const isMaj = scaleMode === 'major';
+    const third = isMaj ? 4 : 3;
+
+    // 1. Dominant Seventh (D7):
+    // Bass on V (t + 7), Tenor on IV (t + 5 + 12), Alto on VII leading tone (t + 11), Soprano on II (t + 14)
+    // 2. Tonic Resolution (T / t):
+    // Bass on I (t), Tenor on III (t + 12 + third), Alto on I (t + 12), Soprano on I (t + 24)
+    const chords: { midis: number[]; dur: number; gain: number }[] = [
+      {
+        midis: [t + 7 - 12, t + 5, t + 11, t + 14], // Bass V, IV, VII (leading tone), II
+        dur: 0.55,
+        gain: 1.25,
+      },
+      {
+        midis: [t, t + 7, t + 12, t + 12 + third], // Pure resolved tonic
+        dur: 1.1,
+        gain: 1.35,
+      },
+    ];
+
+    let currentOffset = 0;
+    chords.forEach((chord, idx) => {
+      const startTime = now + currentOffset;
+      const delayMs = currentOffset * 1000;
+
+      this.scheduleTimeout(() => {
+        chord.midis.forEach((m, i) => {
+          this.playSingleNote(m, startTime, chord.dur, i === 0 ? chord.gain * 1.1 : chord.gain, settings);
+        });
+        if (onVisualNotes) onVisualNotes(chord.midis);
+      }, delayMs);
+
+      currentOffset += (idx === chords.length - 1 ? chord.dur : 0.52);
+    });
+
+    const totalEndMs = (currentOffset + 0.2) * 1000;
+    this.scheduleTimeout(() => {
+      if (onVisualNotes) onVisualNotes([]);
+      if (onFinish) onFinish();
+    }, totalEndMs);
+  }
+
+  /**
+   * Plays a 4-part SATB harmonic progression sequentially with classical voice leading.
+   */
+  public playProgressionTask(
+    progression: RealizedProgression,
+    settings: PlaybackSettings,
+    onStepChange?: (stepIndex: number, midis: number[]) => void,
+    onFinish?: () => void
+  ) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime + 0.02;
+
+    const tempoMod = Math.max(0.4, Math.min(2.0, settings.tempo));
+    const isArp = settings.style === 'arpeggio';
+    const stepDuration = (isArp ? 1.5 : 1.25) / tempoMod;
+
+    let currentOffset = 0;
+    progression.steps.forEach((step, idx) => {
+      const startTime = now + currentOffset;
+      const delayMs = currentOffset * 1000;
+      const dur = idx === progression.steps.length - 1 ? stepDuration * 1.35 : stepDuration;
+
+      this.scheduleTimeout(() => {
+        if (isArp) {
+          const arpSubStep = 0.18 / tempoMod;
+          step.midisSATB.forEach((m, voiceIdx) => {
+            const voiceGain = voiceIdx === 0 ? 1.25 : voiceIdx === 3 ? 1.15 : 1.0;
+            this.playSingleNote(m, startTime + voiceIdx * arpSubStep, dur, voiceGain, settings);
+          });
+        } else {
+          step.midisSATB.forEach((m, voiceIdx) => {
+            const voiceGain = voiceIdx === 0 ? 1.25 : voiceIdx === 3 ? 1.15 : 1.0;
+            this.playSingleNote(m, startTime, dur, voiceGain, settings);
+          });
+        }
+
+        if (onStepChange) {
+          onStepChange(idx, [...step.midisSATB]);
+        }
+      }, delayMs);
+
+      currentOffset += stepDuration;
+    });
+
+    const totalEndMs = (currentOffset + 0.3) * 1000;
+    this.scheduleTimeout(() => {
+      if (onStepChange) onStepChange(-1, []);
+      if (onFinish) onFinish();
+    }, totalEndMs);
+  }
+
+  /**
+   * Plays a single SATB chord step from a harmonic progression.
+   */
+  public playProgressionStep(
+    midisSATB: [number, number, number, number],
+    settings: PlaybackSettings,
+    onFinish?: () => void
+  ) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime + 0.01;
+    const tempoMod = Math.max(0.5, Math.min(2.0, settings.tempo));
+    const dur = 1.6 / tempoMod;
+
+    if (settings.style === 'arpeggio') {
+      const arpSubStep = 0.22 / tempoMod;
+      midisSATB.forEach((m, voiceIdx) => {
+        const voiceGain = voiceIdx === 0 ? 1.25 : voiceIdx === 3 ? 1.15 : 1.0;
+        this.playSingleNote(m, now + voiceIdx * arpSubStep, dur, voiceGain, settings);
+      });
+
+      const totalEndMs = (midisSATB.length * arpSubStep + dur) * 1000;
+      this.scheduleTimeout(() => {
+        if (onFinish) onFinish();
+      }, totalEndMs);
+    } else {
+      midisSATB.forEach((m, voiceIdx) => {
+        const voiceGain = voiceIdx === 0 ? 1.25 : voiceIdx === 3 ? 1.15 : 1.0;
+        this.playSingleNote(m, now, dur, voiceGain, settings);
+      });
+
+      const totalEndMs = dur * 1000;
+      this.scheduleTimeout(() => {
+        if (onFinish) onFinish();
+      }, totalEndMs);
+    }
+  }
+
+  /**
+   * Plays a single isolated voice line (Bass, Tenor, Alto, or Soprano) across the progression.
+   */
+  public playProgressionVoice(
+    progression: RealizedProgression,
+    voiceIndex: 0 | 1 | 2 | 3,
+    settings: PlaybackSettings,
+    onStepChange?: (stepIndex: number, midi: number) => void,
+    onFinish?: () => void
+  ) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime + 0.02;
+
+    const tempoMod = Math.max(0.4, Math.min(2.0, settings.tempo));
+    const stepDuration = 0.52 / tempoMod;
+
+    let currentOffset = 0;
+    progression.steps.forEach((step, idx) => {
+      const startTime = now + currentOffset;
+      const delayMs = currentOffset * 1000;
+      const dur = idx === progression.steps.length - 1 ? stepDuration * 1.35 : stepDuration;
+      const m = step.midisSATB[voiceIndex];
+
+      this.scheduleTimeout(() => {
+        this.playSingleNote(m, startTime, dur, 1.25, settings, true, idx === progression.steps.length - 1);
+        if (onStepChange) {
+          onStepChange(idx, m);
+        }
+      }, delayMs);
+
+      currentOffset += stepDuration;
+    });
+
+    const totalEndMs = (currentOffset + 0.3) * 1000;
+    this.scheduleTimeout(() => {
+      if (onStepChange) onStepChange(-1, -1);
+      if (onFinish) onFinish();
+    }, totalEndMs);
+  }
+
+  /**
+   * Plays a single voice note for a specific step voice.
+   */
+  public playSingleVoiceNote(
+    midi: number,
+    settings: PlaybackSettings,
+    onFinish?: () => void
+  ) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime + 0.01;
+    const dur = 1.2;
+    this.playSingleNote(midi, now, dur, 1.25, settings);
+    this.scheduleTimeout(() => {
+      if (onFinish) onFinish();
+    }, dur * 1000);
   }
 }
 

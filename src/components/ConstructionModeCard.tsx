@@ -1,26 +1,57 @@
 import React, { useMemo } from 'react';
 import { CurrentTask, PlaybackSettings } from '../types';
 import { getConstructionBreakdown, getCharacteristicResolution } from '../audio/solfegeHelper';
+import { ResolutionSchemeView, ResolutionVoiceRow } from './ResolutionSchemeView';
 import {
   ArrowUp,
   ArrowDown,
   Sparkles,
   ArrowRight,
-  Radio,
 } from 'lucide-react';
 
 interface ConstructionModeCardProps {
   currentTask: CurrentTask | null;
-  settings: PlaybackSettings;
-  onReveal: () => void;
-  onReplayRoot: () => void;
-  onReplayFull: () => void;
+  settings?: PlaybackSettings;
+  onReveal?: () => void;
+  onReplayRoot?: () => void;
+  onReplayFull?: () => void;
 }
 
 export const ConstructionModeCard: React.FC<ConstructionModeCardProps> = ({
   currentTask,
 }) => {
-  if (!currentTask) {
+  const item = currentTask?.item;
+  const rootNoteName = currentTask?.rootNoteName ?? 'C';
+  const revealed = currentTask?.revealed ?? false;
+  const direction = currentTask?.constructionDirection || 'up';
+  const isUp = direction === 'up';
+
+  // Calculate detailed diatonic solfege notes and interval steps
+  const breakdown = useMemo(() => {
+    if (!currentTask || !item) {
+      return { fullChordTitle: '', noteNames: [], notesMidi: [], degreeLabels: [], steps: [] };
+    }
+    return getConstructionBreakdown(item, currentTask.rootMidi, direction, rootNoteName);
+  }, [currentTask, item, direction, rootNoteName]);
+
+  // Compute characteristic interval resolution if applicable
+  const charResolution = useMemo(() => {
+    if (!item || !breakdown.notesMidi.length) return null;
+    return getCharacteristicResolution(item, breakdown.notesMidi, breakdown.noteNames, direction);
+  }, [item, breakdown.notesMidi, breakdown.noteNames, direction]);
+
+  const resolutionRows: ResolutionVoiceRow[] = useMemo(() => {
+    if (!charResolution) return [];
+    const rows = charResolution.voiceMovements.map((vm) => ({
+      fromNote: vm.from,
+      fromDegree: vm.degreeFrom,
+      toNote: vm.to,
+      toDegree: vm.degreeTo,
+    }));
+    return rows.reverse();
+  }, [charResolution]);
+
+  if (!currentTask || !item) {
     return (
       <div className="w-full bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
         <Sparkles className="w-8 h-8 text-amber-400/50" />
@@ -33,20 +64,6 @@ export const ConstructionModeCard: React.FC<ConstructionModeCardProps> = ({
       </div>
     );
   }
-
-  const { item, rootNoteName, revealed, constructionDirection } = currentTask;
-  const direction = constructionDirection || 'up';
-  const isUp = direction === 'up';
-
-  // Calculate detailed diatonic solfege notes and interval steps
-  const breakdown = useMemo(() => {
-    return getConstructionBreakdown(item, currentTask.rootMidi, direction, rootNoteName);
-  }, [item, currentTask.rootMidi, direction, rootNoteName]);
-
-  // Compute characteristic interval resolution if applicable
-  const charResolution = useMemo(() => {
-    return getCharacteristicResolution(item, breakdown.notesMidi, breakdown.noteNames, direction);
-  }, [item, breakdown.notesMidi, breakdown.noteNames, direction]);
 
   return (
     <div className="w-full bg-slate-900/70 backdrop-blur-xl border border-slate-800/80 rounded-xl p-4 sm:p-5 flex flex-col items-center text-center shadow-lg transition-all space-y-3.5">
@@ -84,117 +101,78 @@ export const ConstructionModeCard: React.FC<ConstructionModeCardProps> = ({
         )}
       </div>
 
-      {/* Revealed Solution with Chord Root Title and Diatonic Spelling */}
+      {/* Revealed Solution with Diatonic Spelling */}
       {revealed && (
-        <div className="w-full max-w-xl bg-slate-950/80 border border-slate-800/90 rounded-xl p-4 text-left space-y-3.5 animate-in fade-in zoom-in-95 duration-150">
-          <div className="flex items-center justify-between text-xs border-b border-slate-800/80 pb-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-300 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 flex items-center gap-1.5">
-                <span className="text-slate-400">от</span>
-                <strong className="text-amber-300 font-mono text-sm">{rootNoteName}</strong>
-              </span>
+        <div className="w-full max-w-xl flex flex-col items-center gap-3.5 animate-in fade-in zoom-in-95 duration-150 text-center">
 
-              <div
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-semibold ${
-                  isUp
-                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                    : 'bg-sky-500/15 text-sky-300 border-sky-500/40'
-                }`}
-              >
-                {isUp ? <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" /> : <ArrowDown className="w-3.5 h-3.5 stroke-[2.5]" />}
-                <span>{isUp ? 'Вверх' : 'Вниз'}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Full Chord Name with Root Tone */}
-          <div>
-            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-              {breakdown.fullChordTitle}
-            </h3>
-          </div>
-
-          {/* Characteristic Interval Resolution (Key & Voice Leading Breakdown) */}
+          {/* Characteristic Interval Resolution Vertical Scheme */}
           {charResolution && (
-            <div className="w-full bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3 sm:p-3.5 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
-                <span className="text-indigo-300 font-bold flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Разрешение в тональность:</span>
-                </span>
-                <span className="font-bold text-amber-300 bg-slate-900/90 px-2.5 py-0.5 rounded border border-indigo-500/30 text-xs">
-                  {charResolution.tonality}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-xs pt-1 border-t border-indigo-500/20">
-                <span className="text-slate-400">Интервал разрешения:</span>
-                <span className="font-bold text-emerald-300">
-                  {charResolution.resolvedIntervalName} ({charResolution.resolvedNotesString})
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                {charResolution.voiceMovements.map((vm, i) => (
-                  <div key={i} className="flex items-center justify-between px-2.5 py-1.5 bg-slate-900/80 rounded-lg border border-slate-800 text-xs">
-                    <span className="text-slate-200 font-mono font-bold">
-                      {vm.from} <span className="text-[10px] text-slate-400 font-normal">({vm.degreeFrom})</span>
-                    </span>
-                    <ArrowRight className="w-3.5 h-3.5 text-indigo-400 shrink-0 mx-1.5" />
-                    <span className="text-emerald-300 font-mono font-bold">
-                      {vm.to} <span className="text-[10px] text-emerald-400 font-normal">({vm.degreeTo})</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ResolutionSchemeView
+              title="Разрешение интервала в тональности"
+              tonalityName={charResolution.tonality}
+              rows={resolutionRows}
+              givenNoteName={rootNoteName}
+            />
           )}
 
-          {/* Sequence of Notes & Step-by-Step Intervals (hidden for characteristic intervals, which have resolution panel) */}
+          {/* Sequence of Notes & Step-by-Step Interval Scheme */}
           {!charResolution && (
             <>
-              <div className="space-y-1.5">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                  Звуки {direction === 'down' ? 'сверху вниз' : 'снизу вверх'}:
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {breakdown.noteNames.map((note, idx) => {
-                    const isRoot = idx === 0;
-                    return (
-                      <React.Fragment key={idx}>
-                        <div
-                          className={`px-3 py-1.5 rounded-lg font-bold text-sm sm:text-base border shadow-sm transition ${
-                            isRoot
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                              : 'bg-slate-800/90 text-white border-slate-700'
-                          }`}
-                        >
-                          <span>{note}</span>
-                        </div>
-                        {idx < breakdown.noteNames.length - 1 && (
-                          <ArrowRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Vertical Note Stack: Given note at bottom if UP, at top if DOWN */}
+              {breakdown.noteNames.length > 0 && (() => {
+                const zipped = breakdown.noteNames.map((note, i) => ({
+                  note,
+                  label: breakdown.degreeLabels?.[i] || `${i + 1}`,
+                  isRoot: i === 0,
+                }));
+                const itemsToRender = direction === 'up' ? [...zipped].reverse() : zipped;
 
-              {breakdown.steps.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    Интервалы между звуками:
+                return (
+                  <div className="w-full space-y-1.5 pt-1">
+                    <div className="flex flex-col items-center gap-1 w-full max-w-xs mx-auto">
+                      {itemsToRender.map((item, idx) => {
+                        const isSpecial = item.label.includes('♭') || item.label.includes('♯') || item.label.includes('♮');
+                        return (
+                          <div
+                            key={idx}
+                            className={`w-full flex items-center justify-between px-3.5 py-1.5 rounded-xl font-mono text-xs sm:text-sm border shadow-xs transition-all ${
+                              isSpecial
+                                ? 'bg-fuchsia-950/70 text-fuchsia-100 border-fuchsia-500/70 font-bold shadow-fuchsia-950/30'
+                                : item.isRoot
+                                ? 'bg-amber-950/40 text-amber-100 border border-amber-500/50 font-bold'
+                                : 'bg-slate-900 text-white border-slate-700/80'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className={`${isSpecial ? 'text-fuchsia-300 font-black' : item.isRoot ? 'text-amber-400 font-bold' : 'text-slate-300 font-extrabold'} text-xs font-mono`}>
+                                {item.label}
+                              </span>
+                            </div>
+                            <span className={`min-w-[36px] h-8 px-2 flex items-center justify-center rounded-lg border text-sm font-extrabold shadow-inner ${
+                              isSpecial
+                                ? 'bg-fuchsia-900/60 border-fuchsia-400/80 text-fuchsia-100'
+                                : item.isRoot
+                                ? 'bg-amber-950/80 border-amber-500/60 text-amber-200'
+                                : 'bg-slate-800 border-slate-600 text-slate-100'
+                            }`}>
+                              {item.note}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {breakdown.steps.map((st, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/90 border border-slate-800 text-xs font-mono text-slate-300"
-                      >
-                        <span className="text-emerald-400 font-bold">{st.intervalName}</span>
-                        <span className="text-slate-500">({st.fromNote} → {st.toNote})</span>
-                      </div>
-                    ))}
+                );
+              })()}
+
+              {/* Clean Interval Scheme without Notes */}
+              {breakdown.steps.length > 0 && (
+                <div className="w-full space-y-1.5 pt-1 text-center">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Схема интервалов:
+                  </div>
+                  <div className="inline-flex flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs sm:text-sm font-mono font-bold text-emerald-400">
+                    {breakdown.steps.map((st) => st.intervalName).join(' + ')}
                   </div>
                 </div>
               )}
@@ -205,3 +183,4 @@ export const ConstructionModeCard: React.FC<ConstructionModeCardProps> = ({
     </div>
   );
 };
+

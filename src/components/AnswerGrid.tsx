@@ -338,8 +338,12 @@ export const AnswerGrid: React.FC<AnswerGridProps> = ({
 
                         {subtitleHint && (
                           <span
-                            className={`text-[8px] sm:text-[9px] font-mono px-1 py-0.2 rounded border leading-none shrink-0 whitespace-nowrap ${
-                              subtitleHint.includes('♯')
+                            className={`text-[8px] sm:text-[9px] font-mono font-semibold px-1 py-0.2 rounded border leading-none shrink-0 whitespace-nowrap ${
+                              item.modeQuality === 'мажор' || subtitleHint.includes('Мажор')
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                : item.modeQuality === 'минор' || subtitleHint.includes('Минор')
+                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                                : subtitleHint.includes('♯')
                                 ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                                 : subtitleHint.includes('♭')
                                 ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'

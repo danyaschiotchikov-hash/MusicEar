@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#312e81" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+
+  <!-- Outer subtle sound wave rings -->
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-dasharray="6 8" opacity="0.4" />
+  <circle cx="256" cy="256" r="215" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4 12" opacity="0.3" />
+
+  <!-- Piano Keyboard stylized arch / block -->
+  <g transform="translate(106, 260)">
+    <!-- White Keys Base -->
+    <rect x="0" y="0" width="300" height="120" rx="16" fill="#f8fafc" stroke="#94a3b8" stroke-width="3" />
+    
+    <!-- Key separators -->
+    <line x1="43" y1="0" x2="43" y2="120" stroke="#cbd5e1" stroke-width="2.5" />
+    <line x1="86" y1="0" x2="86" y2="120" stroke="#cbd5e1" stroke-width="2.5" />
+    <line x1="129" y1="0" x2="129" y2="120" stroke="#cbd5e1" stroke-width="2.5" />
+    <line x1="172" y1="0" x2="172" y2="120" stroke="#cbd5e1" stroke-width="2.5" />
+    <line x1="215" y1="0" x2="215" y2="120" stroke="#cbd5e1" stroke-width="2.5" />
+    <line x1="258" y1="0" x2="258" y2="120" stroke="#cbd5e1" stroke-width="2.5" />
+
+    <!-- Black Keys -->
+    <rect x="28" y="0" width="28" height="72" rx="6" fill="#0f172a" />
+    <rect x="71" y="0" width="28" height="72" rx="6" fill="#0f172a" />
+    <!-- Gap for E-F -->
+    <rect x="157" y="0" width="28" height="72" rx="6" fill="#0f172a" />
+    <rect x="200" y="0" width="28" height="72" rx="6" fill="#0f172a" />
+    <rect x="243" y="0" width="28" height="72" rx="6" fill="#0f172a" />
+  </g>
+
+  <!-- Golden Musical Note Symbol (Beamed Eighth Notes with spark) -->
+  <g filter="url(#glow)">
+    <!-- Note Stem 1 -->
+    <rect x="195" y="112" width="16" height="96" rx="8" fill="url(#goldGrad)" />
+    <!-- Note Stem 2 -->
+    <rect x="295" y="86" width="16" height="122" rx="8" fill="url(#goldGrad)" />
+    <!-- Beam -->
+    <polygon points="195,112 311,86 311,114 195,140" fill="url(#goldGrad)" />
+    
+    <!-- Notehead 1 -->
+    <ellipse cx="178" cy="208" rx="28" ry="21" transform="rotate(-24 178 208)" fill="url(#goldGrad)" />
+    <!-- Notehead 2 -->
+    <ellipse cx="278" cy="198" rx="28" ry="21" transform="rotate(-24 278 198)" fill="url(#goldGrad)" />
+  </g>
+
+  <!-- Sound Waves radiating from the notes -->
+  <path d="M 335 125 A 48 48 0 0 1 365 175" fill="none" stroke="url(#cyanGrad)" stroke-width="6" stroke-linecap="round" />
+  <path d="M 355 105 A 76 76 0 0 1 395 185" fill="none" stroke="url(#cyanGrad)" stroke-width="6" stroke-linecap="round" opacity="0.75" />
+</svg>

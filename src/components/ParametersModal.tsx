@@ -125,59 +125,6 @@ export const ParametersModal: React.FC<ParametersModalProps> = ({
             </div>
           </div>
 
-          {/* Style & Direction */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Style */}
-            <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 space-y-1.5">
-              <span className="font-semibold text-slate-300 block">
-                Стиль воспроизведения
-              </span>
-              <select
-                value={settings.style}
-                onChange={(e) => onChange({ style: e.target.value as PlaybackStyle })}
-                className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-              >
-                <option value="arpeggio">🎶 Арпеджио (Последовательно)</option>
-                <option value="harmonic">🎹 Гармонически (Одновременно)</option>
-              </select>
-            </div>
-
-            {/* Direction */}
-            <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 space-y-1.5">
-              <span className="font-semibold text-slate-300 block">
-                Направление арпеджио
-              </span>
-              <select
-                value={settings.direction}
-                onChange={(e) => onChange({ direction: e.target.value as PlaybackDirection })}
-                className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-              >
-                <option value="up">⬆️ Снизу вверх</option>
-                <option value="down">⬇️ Сверху вниз</option>
-                <option value="random">🔀 Случайно (Вверх или вниз)</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Root Note Selection */}
-          <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800 space-y-1.5">
-            <span className="font-semibold text-slate-300 block">
-              Опорная нота (Тоника)
-            </span>
-            <select
-              value={settings.rootNote}
-              onChange={(e) => onChange({ rootNote: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-medium focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-            >
-              <option value="random">🎲 Случайный тон (Любая нота в диапазоне)</option>
-              {NOTE_NAMES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* Sliders Section: Tempo, Resonance, Decay, Volume */}
           <div className="space-y-3 pt-1">
             {/* Tempo */}

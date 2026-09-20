@@ -74,8 +74,8 @@ export const TopControls: React.FC<TopControlsProps> = ({
             className="bg-slate-800/90 border border-slate-700/80 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium focus:ring-1 focus:ring-indigo-500 cursor-pointer"
           >
             <option value="up">⬆️ Снизу вверх</option>
+            <option value="chain">🔗 Цепочка</option>
             <option value="down">⬇️ Сверху вниз</option>
-            <option value="random">🔀 Случайно</option>
           </select>
 
           {/* Root Note */}

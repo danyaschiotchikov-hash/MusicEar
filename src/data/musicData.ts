@@ -3,20 +3,20 @@ import { CategoryInfo, MusicItem } from '../types';
 export const CATEGORIES: CategoryInfo[] = [
   {
     id: 'simple_intervals',
-    name: 'Простые интервалы',
-    shortDesc: 'От м.2 до б.7 и октава',
+    name: 'Интервалы',
+    shortDesc: 'От м.2 до октавы',
     icon: 'Music2',
   },
   {
     id: 'characteristic_intervals',
-    name: 'Характерные интервалы',
-    shortDesc: 'С гармоническим разрешением',
+    name: 'Характерные',
+    shortDesc: 'Тритоны, ув.2, ум.7 с разрешениями',
     icon: 'Sparkles',
   },
   {
     id: 'triads',
-    name: 'Трезвучия и обращения',
-    shortDesc: 'Мажорные, минорные, ув., ум.',
+    name: 'Трезвучия',
+    shortDesc: 'Мажорные, минорные и обращения',
     icon: 'Layers',
   },
   {
@@ -27,20 +27,20 @@ export const CATEGORIES: CategoryInfo[] = [
   },
   {
     id: 'd7_inversions',
-    name: 'Обращения D7',
-    shortDesc: 'D6/5, D4/3, D2',
+    name: 'Обращения D₇',
+    shortDesc: 'D6/5, D4/3, D2 от звука',
     icon: 'RefreshCw',
   },
   {
     id: 'scales',
-    name: 'Базовые гаммы',
-    shortDesc: 'Натуральные, гарм., мелод., дважды гарм.',
+    name: 'Гаммы',
+    shortDesc: 'Виды мажора и минора',
     icon: 'Activity',
   },
   {
     id: 'modes',
-    name: 'Лады и пентатоники',
-    shortDesc: 'Дорийский, фригийский, лидийский и др.',
+    name: 'Лады',
+    shortDesc: 'Дорийский, фригийский, лидийский...',
     icon: 'Compass',
   },
 ];
@@ -57,15 +57,46 @@ export const NOTE_NAMES_CIS_DES = [
   'G',
   'Gis / As',
   'A',
-  'B / Ais',
+  'Ais / B',
   'H',
 ];
 
 export const NOTE_NAMES = NOTE_NAMES_CIS_DES;
 export const NOTE_NAMES_RU = NOTE_NAMES_CIS_DES;
 
-export const CHROMATIC_NOTES_UP = ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'Ais', 'H'];
-export const CHROMATIC_NOTES_DOWN = ['C', 'Des', 'D', 'Es', 'E', 'F', 'Ges', 'G', 'As', 'A', 'B', 'H'];
+// Individual distinct note options with separated enharmonics
+export interface TonicNoteOption {
+  value: string;
+  label: string;
+}
+
+export const TONIC_NOTE_OPTIONS: TonicNoteOption[] = [
+  { value: 'C', label: 'C (До)' },
+  { value: 'Cis', label: 'Cis (До♯)' },
+  { value: 'Des', label: 'Des (Ре♭)' },
+  { value: 'D', label: 'D (Ре)' },
+  { value: 'Dis', label: 'Dis (Ре♯)' },
+  { value: 'Es', label: 'Es (Ми♭)' },
+  { value: 'E', label: 'E (Ми)' },
+  { value: 'F', label: 'F (Фа)' },
+  { value: 'Fis', label: 'Fis (Фа♯)' },
+  { value: 'Ges', label: 'Ges (Соль♭)' },
+  { value: 'G', label: 'G (Соль)' },
+  { value: 'Gis', label: 'Gis (Соль♯)' },
+  { value: 'As', label: 'As (Ля♭)' },
+  { value: 'A', label: 'A (Ля)' },
+  { value: 'Ais', label: 'Ais (Ля♯)' },
+  { value: 'B', label: 'B (Си♭)' },
+  { value: 'H', label: 'H (Си)' },
+  { value: 'Ces', label: 'Ces (До♭)' },
+  { value: 'His', label: 'His (Си♯)' },
+];
+
+// Distinct chromatic spellings for sharp and flat contexts
+export const CHROMATIC_NOTES_SHARP = ['C', 'Cis', 'D', 'Dis', 'E', 'F', 'Fis', 'G', 'Gis', 'A', 'Ais', 'H'];
+export const CHROMATIC_NOTES_FLAT = ['C', 'Des', 'D', 'Es', 'E', 'F', 'Ges', 'G', 'As', 'A', 'B', 'H'];
+export const CHROMATIC_NOTES_UP = CHROMATIC_NOTES_SHARP;
+export const CHROMATIC_NOTES_DOWN = CHROMATIC_NOTES_FLAT;
 
 export const ALL_ITEMS: MusicItem[] = [
   // 1. Простые интервалы
@@ -293,6 +324,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'МБ7 (D7)',
     category: 'seventh_chords',
     semitones: [0, 4, 7, 10],
+    resolutionSemitones: [5, 5, 5, 9], // Resolves to incomplete tonic triad: bass V->I (+5), 3rd VII->I (+1), 5th II->I (-2), 7th IV->III (-1) -> relative to root: 0+5, 4+1=5, 7-2=5, 10-1=9 -> [5, 5, 5, 9] (notes: I, I, I, III)
+    resolutionName: 'Т3 (неполное)',
+    hint: 'V → Т3',
   },
   {
     id: 'seventh_bb7',
@@ -329,6 +363,22 @@ export const ALL_ITEMS: MusicItem[] = [
     category: 'seventh_chords',
     semitones: [0, 3, 6, 9],
   },
+  {
+    id: 'seventh_bum7',
+    name: 'Большой уменьшенный (Бум7)',
+    shortName: 'Бум7',
+    category: 'seventh_chords',
+    semitones: [0, 3, 6, 11],
+    desc: 'Ум5/3 + б.7 (м.3 + м.3 + ув.3)',
+  },
+  {
+    id: 'seventh_buv7',
+    name: 'Большой увеличенный (Був7)',
+    shortName: 'Був7',
+    category: 'seventh_chords',
+    semitones: [0, 4, 8, 11],
+    desc: 'Ув5/3 + б.7 (б.3 + б.3 + м.3)',
+  },
 
   // 5. Обращения D7
   {
@@ -337,7 +387,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'D6/5',
     category: 'd7_inversions',
     semitones: [0, 3, 6, 8],
-    hint: 'VII',
+    resolutionSemitones: [1, 1, 5, 8], // VII->I (+1), II->I (-2 -> +1), IV->III (-1 -> +5), V->V (0 -> +8) -> [1, 1, 5, 8] (полное Т5/3 с удвоенной тоникой)
+    resolutionName: 'Т5/3 (полное)',
+    hint: 'VII → Т5/3',
   },
   {
     id: 'd7_43',
@@ -345,7 +397,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'D4/3',
     category: 'd7_inversions',
     semitones: [0, 3, 5, 9],
-    hint: 'II',
+    resolutionSemitones: [-2, 2, 5, 10], // II->I (-2), IV->III (-1 -> +2), V->V (0 -> +5), VII->I (+1 -> +10) -> [ -2, 2, 5, 10 ] (развернутое полное Т5/3)
+    resolutionName: 'Т5/3 (полное)',
+    hint: 'II → Т5/3',
   },
   {
     id: 'd7_2',
@@ -353,7 +407,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'D2',
     category: 'd7_inversions',
     semitones: [0, 2, 6, 9],
-    hint: 'IV',
+    resolutionSemitones: [-1, 2, 7, 11], // IV->III (-1), V->I (+5 -> +7), VII->I (+1 -> +7), II->I (-2 -> +7) or bass IV->III (-1) into T6 [ -1, 2, 7, 11 ] (Т6 с удвоенной тоникой)
+    resolutionName: 'Т6 (с удв. тоникой)',
+    hint: 'IV → Т6',
   },
 
   // 6. Базовые гаммы (с альтерациями)
@@ -439,8 +495,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'Дорийский',
     category: 'modes',
     semitones: [0, 2, 3, 5, 7, 9, 10],
-    hint: 'VI♯',
-    desc: 'Минор с высокой VI ступенью (7 ступеней)',
+    hint: 'Минор (VI♯)',
+    modeQuality: 'минор',
+    desc: 'б.2 + м.2 + б.2 + б.2 + б.2 + м.2 + б.2',
   },
   {
     id: 'mode_phrygian',
@@ -448,8 +505,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'Фригийский',
     category: 'modes',
     semitones: [0, 1, 3, 5, 7, 8, 10],
-    hint: 'II♭',
-    desc: 'Минор с низкой II ступенью (7 ступеней)',
+    hint: 'Минор (II♭)',
+    modeQuality: 'минор',
+    desc: 'м.2 + б.2 + б.2 + б.2 + м.2 + б.2 + б.2',
   },
   {
     id: 'mode_lydian',
@@ -457,8 +515,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'Лидийский',
     category: 'modes',
     semitones: [0, 2, 4, 6, 7, 9, 11],
-    hint: 'IV♯',
-    desc: 'Мажор с высокой IV ступенью (7 ступеней)',
+    hint: 'Мажор (IV♯)',
+    modeQuality: 'мажор',
+    desc: 'б.2 + б.2 + б.2 + м.2 + б.2 + б.2 + м.2',
   },
   {
     id: 'mode_mixolydian',
@@ -466,8 +525,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'Миксолидийский',
     category: 'modes',
     semitones: [0, 2, 4, 5, 7, 9, 10],
-    hint: 'VII♭',
-    desc: 'Мажор с низкой VII ступенью (7 ступеней)',
+    hint: 'Мажор (VII♭)',
+    modeQuality: 'мажор',
+    desc: 'б.2 + б.2 + м.2 + б.2 + б.2 + м.2 + б.2',
   },
   {
     id: 'mode_locrian',
@@ -475,8 +535,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'Локрийский',
     category: 'modes',
     semitones: [0, 1, 3, 5, 6, 8, 10],
-    hint: 'II♭, V♭',
-    desc: 'Минороподобный лад с уменьшенной квинтой и низкой II (7 ступеней)',
+    hint: 'Минор (II♭, V♭)',
+    modeQuality: 'минор',
+    desc: 'м.2 + б.2 + б.2 + м.2 + б.2 + б.2 + б.2',
   },
   {
     id: 'mode_pentatonic_maj',
@@ -484,8 +545,9 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'Маж. пентатоника',
     category: 'modes',
     semitones: [0, 2, 4, 7, 9],
-    hint: 'без IV, VII',
-    desc: '5-ступенный бесполутоновый мажор',
+    hint: 'Мажор',
+    modeQuality: 'мажор',
+    desc: 'б.2 + б.2 + м.3 + б.2',
   },
   {
     id: 'mode_pentatonic_min',
@@ -493,7 +555,8 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'Мин. пентатоника',
     category: 'modes',
     semitones: [0, 3, 5, 7, 10],
-    hint: 'без II, VI',
-    desc: '5-ступенный бесполутоновый минор',
+    hint: 'Минор',
+    modeQuality: 'минор',
+    desc: 'м.3 + б.2 + б.2 + м.3',
   },
 ];

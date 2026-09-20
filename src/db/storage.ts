@@ -19,9 +19,18 @@ export const DEFAULT_SETTINGS: PlaybackSettings = {
   resonance: 2.0,
   decay: 2.5,
   volume: 0.85,
-  style: 'arpeggio',
-  direction: 'up',
+  style: 'harmonic',
+  direction: 'random',
   rootNote: 'random',
+  tonalRootNote: 'C',
+  tonalScaleMode: 'major',
+  tonalChordFilter: 'diatonic',
+  tonalRootPositionOnly: true,
+  tonalViewMode: 'grid',
+  progressionCategory: 'all',
+  progressionViewMode: 'cards',
+  progressionNotation: 'roman',
+  progressionRootNote: 'C',
   autoAdvanceOnCorrect: true,
   theme: 'dark',
   sustainConstructionRoot: false,
@@ -125,43 +134,49 @@ export async function saveAppState(state: StoredAppState): Promise<void> {
 export async function loadStats(): Promise<AppStats> {
   try {
     const db = await openDB();
-    return new Promise((resolve) => {
+    const idbResult = await new Promise<AppStats | null>((resolve) => {
       const tx = db.transaction(STORE_STATS, 'readonly');
       const store = tx.objectStore(STORE_STATS);
       const req = store.get('user_stats');
-      req.onsuccess = () => {
-        if (req.result) {
-          resolve(req.result);
-        } else {
-          resolve(DEFAULT_STATS);
-        }
-      };
-      req.onerror = () => resolve(DEFAULT_STATS);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
     });
-  } catch (err) {
-    console.warn('Using localStorage fallback for stats:', err);
-    try {
-      const saved = localStorage.getItem('musical_ear_trainer_stats');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
+
+    if (idbResult && typeof idbResult.totalTested === 'number') {
+      return idbResult;
     }
-    return DEFAULT_STATS;
+  } catch (err) {
+    console.warn('IndexedDB loadStats error, using localStorage fallback:', err);
   }
+
+  try {
+    const saved = localStorage.getItem('musical_ear_trainer_stats');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed.totalTested === 'number') {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return DEFAULT_STATS;
 }
 
 export async function saveStats(stats: AppStats): Promise<void> {
+  try {
+    localStorage.setItem('musical_ear_trainer_stats', JSON.stringify(stats));
+  } catch {
+    // ignore
+  }
+
   try {
     const db = await openDB();
     const tx = db.transaction(STORE_STATS, 'readwrite');
     tx.objectStore(STORE_STATS).put(stats, 'user_stats');
   } catch (err) {
-    console.warn('Saving stats to localStorage fallback:', err);
-    try {
-      localStorage.setItem('musical_ear_trainer_stats', JSON.stringify(stats));
-    } catch {
-      // ignore
-    }
+    console.warn('IndexedDB saveStats error:', err);
   }
 }
 

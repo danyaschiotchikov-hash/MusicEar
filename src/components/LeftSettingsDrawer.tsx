@@ -5,6 +5,7 @@ import {
   TimbreType,
   PlaybackStyle,
   PlaybackDirection,
+  AppStats,
 } from '../types';
 import { CATEGORIES, ALL_ITEMS, NOTE_NAMES, NOTE_NAMES_RU } from '../data/musicData';
 import { downloadStandaloneHtmlFile } from '../utils/exportHtml';
@@ -29,6 +30,12 @@ import {
   SlidersHorizontal,
   Sun,
   Moon,
+  Smartphone,
+  Radio,
+  BookOpen,
+  BarChart3,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 
 interface LeftSettingsDrawerProps {
@@ -42,6 +49,11 @@ interface LeftSettingsDrawerProps {
   onSelectAllGlobal: (select: boolean) => void;
   sampleStatus: { isLoaded: boolean; isLoading: boolean; progress: number };
   onLoadSamples: () => void;
+  stats?: AppStats;
+  onOpenStatsModal?: () => void;
+  onOpenInstallModal?: () => void;
+  onOpenCategoryModal?: () => void;
+  onOpenProgressionCatalog?: () => void;
 }
 
 export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
@@ -55,14 +67,23 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
   onSelectAllGlobal,
   sampleStatus,
   onLoadSamples,
+  stats,
+  onOpenStatsModal,
+  onOpenInstallModal,
+  onOpenCategoryModal,
+  onOpenProgressionCatalog,
 }) => {
   // Accordion sections state
   const [openSections, setOpenSections] = useState<{
     soundParams: boolean;
+    progressionParams: boolean;
+    tonalParams: boolean;
     categories: boolean;
     export: boolean;
   }>({
     soundParams: true,
+    progressionParams: true,
+    tonalParams: true,
     categories: true,
     export: false,
   });
@@ -140,45 +161,179 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
 
         {/* Scrollable Accordion Body */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-xs">
-          {/* Theme Selector Section (Sun and Moon icons) */}
-          <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 p-2.5 sm:p-3 flex items-center justify-between gap-2">
-            <span className="font-semibold text-slate-200 flex items-center gap-1.5">
-              {settings.theme === 'light' ? (
-                <Sun className="w-4 h-4 text-amber-400" />
-              ) : (
-                <Moon className="w-4 h-4 text-indigo-400" />
-              )}
-              <span>Тема оформления</span>
-            </span>
+          {/* Top Categories and Elements Selection Button */}
+          {onOpenCategoryModal && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenCategoryModal();
+                onClose();
+              }}
+              className="w-full px-3.5 py-3 bg-indigo-600/25 hover:bg-indigo-600/35 text-indigo-200 hover:text-white border border-indigo-500/50 rounded-xl transition cursor-pointer text-xs font-bold flex items-center justify-center gap-2 shrink-0 shadow-md active:scale-98 whitespace-nowrap"
+            >
+              <SlidersHorizontal className="w-4 h-4 text-indigo-400" />
+              <span>Категории и элементы ({activeItemIds.length})</span>
+            </button>
+          )}
 
-            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-0.5 sm:p-1 rounded-xl">
-              <button
-                type="button"
-                onClick={() => onSettingsChange({ theme: 'light' })}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  settings.theme === 'light'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Светлая тема"
-                aria-label="Светлая тема"
-              >
-                <Sun className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Светлая</span>
-              </button>
+          {/* Statistics Progress & Summary Section */}
+          {stats && (
+            <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 p-3 flex flex-col gap-2.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                  <BarChart3 className="w-4 h-4 text-indigo-400" />
+                  <span>Статистика тренировки</span>
+                </span>
+                <span className="text-[11px] font-mono text-indigo-300 font-bold">
+                  {stats.totalTested > 0
+                    ? `${Math.round((stats.totalCorrect / stats.totalTested) * 100)}%`
+                    : '0%'}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    stats.totalTested > 0
+                      ? Math.round((stats.totalCorrect / stats.totalTested) * 100) >= 80
+                        ? 'bg-emerald-500'
+                        : Math.round((stats.totalCorrect / stats.totalTested) * 100) >= 50
+                        ? 'bg-amber-500'
+                        : 'bg-rose-500'
+                      : 'bg-slate-800'
+                  }`}
+                  style={{
+                    width: `${
+                      stats.totalTested > 0
+                        ? Math.round((stats.totalCorrect / stats.totalTested) * 100)
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+
+              {/* Counter badges */}
+              <div className="flex items-center justify-between text-[11px] font-mono pt-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400 flex items-center gap-0.5 font-bold">
+                    <CheckCircle2 className="w-3 h-3" />
+                    {stats.totalCorrect} верно
+                  </span>
+                  <span className="text-rose-400 flex items-center gap-0.5 font-bold">
+                    <XCircle className="w-3 h-3" />
+                    {Math.max(0, stats.totalTested - stats.totalCorrect)} ошибок
+                  </span>
+                </div>
+                <span className="text-slate-400">Всего: {stats.totalTested}</span>
+              </div>
+
+              {/* Action Button: Open Detailed Stats Modal */}
+              {onOpenStatsModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenStatsModal();
+                    onClose();
+                  }}
+                  className="w-full mt-1 py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-indigo-300 hover:text-indigo-200 border border-slate-700/80 text-[11px] font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Открыть полный отчёт</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Theme Selector Section */}
+          <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 p-2.5 sm:p-3 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-200 flex items-center gap-1.5 text-xs">
+                {settings.theme === 'dark' || !settings.theme ? (
+                  <Moon className="w-4 h-4 text-indigo-400" />
+                ) : (
+                  <Sun className="w-4 h-4 text-amber-400" />
+                )}
+                <span>Тема оформления</span>
+              </span>
+              <span className="text-[10px] font-medium text-slate-400">
+                {settings.theme === 'dark' || !settings.theme
+                  ? 'Тёмная'
+                  : settings.theme === 'light_slate'
+                  ? 'Мягкий Slate'
+                  : settings.theme === 'light_sand'
+                  ? 'Песочная'
+                  : 'Тёплая бумага'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {/* Dark */}
               <button
                 type="button"
                 onClick={() => onSettingsChange({ theme: 'dark' })}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                  settings.theme !== 'light'
-                    ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition cursor-pointer gap-1 ${
+                  settings.theme === 'dark' || !settings.theme
+                    ? 'bg-indigo-950/80 border-indigo-500 text-indigo-200 font-bold ring-1 ring-indigo-500/60 shadow-sm'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
                 }`}
-                title="Тёмная тема"
-                aria-label="Тёмная тема"
+                title="Глубокая тёмная тема"
               >
-                <Moon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>Тёмная</span>
+                <div className="w-4 h-4 rounded-full bg-slate-950 border border-slate-700 shadow-inner flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                </div>
+                <span className="text-[10px] font-medium leading-tight">🌌 Тёмная</span>
+              </button>
+
+              {/* Warm Paper */}
+              <button
+                type="button"
+                onClick={() => onSettingsChange({ theme: 'light_warm' })}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition cursor-pointer gap-1 ${
+                  settings.theme === 'light_warm' || settings.theme === 'light'
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold ring-1 ring-amber-500/60 shadow-sm'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                }`}
+                title="Тёплый кремовый оттенок бумаги"
+              >
+                <div className="w-4 h-4 rounded-full bg-[#f7f5ee] border border-[#dcd6c5] shadow-inner flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                </div>
+                <span className="text-[10px] font-medium leading-tight">📜 Тёплая бумага</span>
+              </button>
+
+              {/* Soft Slate */}
+              <button
+                type="button"
+                onClick={() => onSettingsChange({ theme: 'light_slate' })}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition cursor-pointer gap-1 ${
+                  settings.theme === 'light_slate'
+                    ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300 font-bold ring-1 ring-indigo-500/60 shadow-sm'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                }`}
+                title="Современный дымчато-серый оттенок"
+              >
+                <div className="w-4 h-4 rounded-full bg-[#f1f5f9] border border-[#cbd5e1] shadow-inner flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-700" />
+                </div>
+                <span className="text-[10px] font-medium leading-tight">🏛️ Мягкий Slate</span>
+              </button>
+
+              {/* Sand Linen */}
+              <button
+                type="button"
+                onClick={() => onSettingsChange({ theme: 'light_sand' })}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition cursor-pointer gap-1 ${
+                  settings.theme === 'light_sand'
+                    ? 'bg-amber-600/20 border-amber-600 text-amber-200 font-bold ring-1 ring-amber-600/60 shadow-sm'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                }`}
+                title="Натуральный льняно-песочный оттенок"
+              >
+                <div className="w-4 h-4 rounded-full bg-[#f4f1e6] border border-[#ded7c4] shadow-inner flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-800" />
+                </div>
+                <span className="text-[10px] font-medium leading-tight">🏖️ Песочная</span>
               </button>
             </div>
           </div>
@@ -191,7 +346,7 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-indigo-400" />
-                <span>Параметры звука и темпа</span>
+                <span>Звук и темп</span>
               </div>
               {openSections.soundParams ? (
                 <ChevronDown className="w-4 h-4 text-slate-400" />
@@ -242,50 +397,6 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                       <span className="text-[9px] text-slate-500">Полифонический</span>
                     </button>
                   </div>
-                </div>
-
-                {/* Style & Direction */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <span className="text-slate-400 text-[11px] block">Стиль</span>
-                    <select
-                      value={settings.style}
-                      onChange={(e) => onSettingsChange({ style: e.target.value as PlaybackStyle })}
-                      className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium cursor-pointer"
-                    >
-                      <option value="arpeggio">Арпеджио</option>
-                      <option value="harmonic">Гармонически</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-slate-400 text-[11px] block">Направление</span>
-                    <select
-                      value={settings.direction}
-                      onChange={(e) => onSettingsChange({ direction: e.target.value as PlaybackDirection })}
-                      className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium cursor-pointer"
-                    >
-                      <option value="up">⬆️ Снизу вверх</option>
-                      <option value="down">⬇️ Сверху вниз</option>
-                      <option value="random">🔀 Случайно</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Root Note */}
-                <div className="space-y-1">
-                  <span className="text-slate-400 text-[11px] block">Опорная нота (Тоника)</span>
-                  <select
-                    value={settings.rootNote}
-                    onChange={(e) => onSettingsChange({ rootNote: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium cursor-pointer"
-                  >
-                    <option value="random">🎲 Случайный тон</option>
-                    {NOTE_NAMES.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
                 </div>
 
                 {/* Sliders: Tempo, Resonance, Decay, Volume */}
@@ -395,129 +506,101 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
             )}
           </div>
 
-          {/* 3. Detailed Categories & Items Accordion */}
+          {/* 2. Harmonic Progressions & Notation Section */}
           <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 overflow-hidden">
             <button
-              onClick={() => toggleSection('categories')}
+              onClick={() => toggleSection('progressionParams')}
               className="w-full flex items-center justify-between p-3 text-left font-semibold text-slate-200 hover:bg-slate-900/60 transition cursor-pointer"
             >
               <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-emerald-400" />
-                <span>Категории и элементы ({activeItemIds.length}/{ALL_ITEMS.length})</span>
+                <Layers className="w-4 h-4 text-purple-400" />
+                <span>Гармония и нотация</span>
               </div>
-              {openSections.categories ? (
+              {openSections.progressionParams ? (
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               ) : (
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               )}
             </button>
 
-            {openSections.categories && (
-              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-2.5 pt-2">
-                {/* Global Toggle Buttons */}
-                <div className="flex items-center justify-between pb-1 border-b border-slate-800/60">
-                  <button
-                    onClick={() => onSelectAllGlobal(true)}
-                    className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <CheckCheck className="w-3 h-3" />
-                    <span>Выбрать всё</span>
-                  </button>
-                  <button
-                    onClick={() => onSelectAllGlobal(false)}
-                    className="text-[11px] text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
-                  >
-                    Снять всё
-                  </button>
-                </div>
-
-                {/* Sub-accordion for each Category */}
-                <div className="space-y-2">
-                  {CATEGORIES.map((cat) => {
-                    const catItems = ALL_ITEMS.filter((i) => i.category === cat.id);
-                    const enabledCount = catItems.filter((i) => activeItemIds.includes(i.id)).length;
-                    const isAllCatEnabled = enabledCount === catItems.length && catItems.length > 0;
-                    const isExpanded = !!expandedCats[cat.id];
-
-                    return (
-                      <div
-                        key={cat.id}
-                        className="bg-slate-900/80 rounded-lg border border-slate-800/90 overflow-hidden"
-                      >
-                        {/* Category Header Row */}
-                        <div className="flex items-center justify-between p-2 hover:bg-slate-850 transition">
-                          <button
-                            type="button"
-                            onClick={() => onSelectAllCategory(cat.id, !isAllCatEnabled)}
-                            className="flex items-center gap-1.5 text-left cursor-pointer flex-1"
-                          >
-                            <div className="text-slate-400">
-                              {isAllCatEnabled ? (
-                                <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
-                              ) : enabledCount > 0 ? (
-                                <Check className="w-3.5 h-3.5 text-amber-400" />
-                              ) : (
-                                <Square className="w-3.5 h-3.5 text-slate-600" />
-                              )}
-                            </div>
-                            <span className="text-xs font-semibold text-slate-200">
-                              {cat.name}
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              ({enabledCount}/{catItems.length})
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => toggleCatExpand(cat.id)}
-                            className="p-1 text-slate-400 hover:text-slate-200 transition cursor-pointer"
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            ) : (
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Collapsible Items List */}
-                        {isExpanded && (
-                          <div className="p-2 pt-1 border-t border-slate-800/60 bg-slate-950/40 space-y-1">
-                            {catItems.map((item) => {
-                              const isChecked = activeItemIds.includes(item.id);
-                              return (
-                                <label
-                                  key={item.id}
-                                  className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer transition text-[11px] ${
-                                    isChecked
-                                      ? 'bg-indigo-950/30 text-slate-200'
-                                      : 'text-slate-400 hover:bg-slate-900/60'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-1.5 flex-1 pr-1 truncate">
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => onToggleItem(item.id)}
-                                      className="rounded text-indigo-500 focus:ring-0 cursor-pointer accent-indigo-500"
-                                    />
-                                    <span className="truncate">{item.name}</span>
-                                  </div>
-                                  {item.hint && (
-                                    <span className="text-[9px] font-mono text-slate-400 bg-slate-800/80 px-1 py-0.2 rounded shrink-0">
-                                      {item.hint}
-                                    </span>
-                                  )}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
+            {openSections.progressionParams && (
+              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-3 pt-2">
+                {/* Notation Mode Selector */}
+                <div className="space-y-1.5">
+                  <span className="text-slate-300 font-medium block text-xs">
+                    Отображение аккордов:
+                  </span>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onSettingsChange({ progressionNotation: 'roman' })}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                        (settings.progressionNotation ?? 'roman') === 'roman'
+                          ? 'bg-indigo-600/25 border-indigo-500 text-indigo-100 font-bold ring-1 ring-indigo-500/50'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                      }`}
+                    >
+                      <div>
+                        <span className="block text-xs font-semibold">Ступени: I, IV, V, I6/4 (По умолчанию)</span>
+                        <span className="text-[10px] text-slate-400">Римская ступенная нотация</span>
                       </div>
-                    );
-                  })}
+                      {(settings.progressionNotation ?? 'roman') === 'roman' && (
+                        <Check className="w-4 h-4 text-indigo-400 shrink-0" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onSettingsChange({ progressionNotation: 'analytical' })}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                        settings.progressionNotation === 'analytical'
+                          ? 'bg-indigo-600/25 border-indigo-500 text-indigo-100 font-bold ring-1 ring-indigo-500/50'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                      }`}
+                    >
+                      <div>
+                        <span className="block text-xs font-semibold">Функции: T, S, D, K6/4</span>
+                        <span className="text-[10px] text-slate-400">Аналитическая функциональная гармония</span>
+                      </div>
+                      {settings.progressionNotation === 'analytical' && (
+                        <Check className="w-4 h-4 text-indigo-400 shrink-0" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onSettingsChange({ progressionNotation: 'letter' })}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                        settings.progressionNotation === 'letter'
+                          ? 'bg-indigo-600/25 border-indigo-500 text-indigo-100 font-bold ring-1 ring-indigo-500/50'
+                          : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-850'
+                      }`}
+                    >
+                      <div>
+                        <span className="block text-xs font-semibold">Буквенная: C, G7/B, Am</span>
+                        <span className="text-[10px] text-slate-400">Буквенно-цифровые аккорды</span>
+                      </div>
+                      {settings.progressionNotation === 'letter' && (
+                        <Check className="w-4 h-4 text-indigo-400 shrink-0" />
+                      )}
+                    </button>
+                  </div>
                 </div>
+
+                {/* Open Progression Catalog Button */}
+                {onOpenProgressionCatalog && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenProgressionCatalog();
+                      onClose();
+                    }}
+                    className="w-full py-2.5 px-3 bg-purple-950/70 hover:bg-purple-900/90 text-purple-200 border border-purple-500/40 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-sm active:scale-98"
+                  >
+                    <BookOpen className="w-4 h-4 text-purple-400 shrink-0" />
+                    <span>Каталог оборотов по ступеням</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -530,7 +613,7 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Download className="w-4 h-4 text-sky-400" />
-                <span>Автономная версия (HTML)</span>
+                <span>Экспорт и PWA</span>
               </div>
               {openSections.export ? (
                 <ChevronDown className="w-4 h-4 text-slate-400" />
@@ -540,13 +623,35 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
             </button>
 
             {openSections.export && (
-              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-2 pt-2">
+              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-2.5 pt-2">
+                {/* PWA Phone Install */}
+                {onOpenInstallModal && (
+                  <div className="p-2.5 rounded-lg bg-indigo-950/60 border border-indigo-500/40 space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-indigo-300 font-bold">
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Установка на телефон (PWA)</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-tight">
+                      Добавьте как приложение на главный экран. Работает офлайн без интернета.
+                    </p>
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenInstallModal();
+                      }}
+                      className="w-full py-1.5 px-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-semibold rounded-md shadow-sm transition text-center cursor-pointer"
+                    >
+                      Установить приложение
+                    </button>
+                  </div>
+                )}
+
                 <p className="text-[11px] text-slate-400 leading-snug">
-                  Скачайте приложение одним HTML-файлом. Работает в любом браузере офлайн без интернета и серверов.
+                  Или скачайте приложение одним HTML-файлом:
                 </p>
                 <button
                   onClick={downloadStandaloneHtmlFile}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-semibold rounded-lg shadow-sm transition cursor-pointer"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 bg-slate-800 hover:bg-slate-750 active:scale-95 text-slate-200 border border-slate-700 font-semibold rounded-lg shadow-sm transition cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Скачать .html файл</span>
