@@ -324,9 +324,6 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'МБ7 (D7)',
     category: 'seventh_chords',
     semitones: [0, 4, 7, 10],
-    resolutionSemitones: [5, 5, 5, 9], // Resolves to incomplete tonic triad: bass V->I (+5), 3rd VII->I (+1), 5th II->I (-2), 7th IV->III (-1) -> relative to root: 0+5, 4+1=5, 7-2=5, 10-1=9 -> [5, 5, 5, 9] (notes: I, I, I, III)
-    resolutionName: 'Т3 (неполное)',
-    hint: 'V → Т3',
   },
   {
     id: 'seventh_bb7',
@@ -381,6 +378,16 @@ export const ALL_ITEMS: MusicItem[] = [
   },
 
   // 5. Обращения D7
+  {
+    id: 'd7',
+    name: 'Доминантсептаккорд (D7)',
+    shortName: 'D7',
+    category: 'd7_inversions',
+    semitones: [0, 4, 7, 10],
+    resolutionSemitones: [5, 5, 5, 9],
+    resolutionName: 'Т3 (неполное)',
+    hint: 'V → Т3',
+  },
   {
     id: 'd7_65',
     name: 'D6/5',

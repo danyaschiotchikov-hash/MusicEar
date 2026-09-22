@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Тренажер музыкального слуха</title>
-    <meta name="description" content="Интерактивный тренажер музыкальных интервалов, аккордов и ладов на слух с психоакустическим Web Audio движком и гибкими настройками." />
+    <meta name="description" content="Интерактивный тренажер музыкального слуха и гармонии: распознавание интервалов, аккордов, ладов, академическая гармонизация мелодий на 4 голоса (SATB) с распознаванием оборотов и нотной графикой VexFlow." />
     <meta property="og:title" content="Тренажер музыкального слуха" />
-    <meta property="og:description" content="Интерактивный тренажер музыкальных интервалов, аккордов и ладов на слух с психоакустическим Web Audio движком и гибкими настройками." />
+    <meta property="og:description" content="Интерактивный тренажер музыкального слуха и гармонии: распознавание интервалов, аккордов, ладов, академическая гармонизация мелодий на 4 голоса (SATB) с распознаванием оборотов и нотной графикой VexFlow." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#0f172a" />
@@ -21,7 +21,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
-    <div id="root"></div>
+    <div id="root">
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0f172a;color:#94a3b8;font-family:sans-serif;font-size:14px;gap:8px;">
+        <div style="width:16px;height:16px;border:2px solid #6366f1;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        Загрузка тренажера...
+      </div>
+      <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+      </style>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

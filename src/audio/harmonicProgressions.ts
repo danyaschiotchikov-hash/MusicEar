@@ -1,6 +1,17 @@
 import { CHROMATIC_NOTES_UP } from '../data/musicData';
+import { compileEncyclopedicProgressions } from './encyclopediaData';
 
-export type ProgressionCategory = 'passing' | 'auxiliary' | 'phrygian' | 'cadential' | 'deceptive' | 'sequence';
+export type ProgressionCategory =
+  | 'cadential'    // 1. Базовые & кадансовые
+  | 'passing'      // 2. Проходящие
+  | 'auxiliary'    // 3. Вспомогательные
+  | 'deceptive'    // 4. Каденционные и прерванные
+  | 'disjunct'     // 5. Обороты со скачками голосов
+  | 'altered'      // 6. Альтерированные (DD, Ув.6, N6, секста Чайковского)
+  | 'modal'        // 7. Модальные (дорийский, миксолидийский, лидийский, обиходные)
+  | 'sequence'     // 8. Секвенции (золотая секвенция, цепи септаккордов)
+  | 'ellipsis'     // 9. Эллипсис & тритоновые замены
+  | 'modern';      // 10. Симметричные & современные (целотонные, Прокофьев, Шостакович)
 
 export type ScaleDegreeCategory = 'all' | 'I' | 'II' | 'III' | 'IV' | 'V' | 'VI' | 'VII';
 
@@ -9,7 +20,7 @@ export interface ProgressionChordStep {
   degreeRoman: string;          // e.g. "I", "V", "I"
   nameRu: string;               // e.g. "Тоническое трезвучие"
   // SATB offsets from tonic (Bass, Tenor, Alto, Soprano) in semitones:
-  // Base octave tonic is at index 0
+  // Base octave tonic is at index 0 (C4)
   satbOffsets: [number, number, number, number]; // [Bass, Tenor, Alto, Soprano]
   voiceDegreesRu: {
     soprano: string; // e.g. "III (Ми)"
@@ -32,1087 +43,45 @@ export interface HarmonicProgressionTemplate {
   voiceLeadingExplanationRu: string;
   usageContextRu: string;
   steps: ProgressionChordStep[];
+  originalTonicPC?: number;
 }
 
-/**
- * Classical Russian & European Conservatory SATB Harmonic Progressions
- * Strict 4-part voice leading without parallel fifths/octaves, proper resolution of 7ths & leading tones.
- */
-export const CLASSICAL_PROGRESSIONS: HarmonicProgressionTemplate[] = [
-  // =========================================================================
-  // 1. ПРОХОДЯЩИЕ ОБОРОТЫ (Passing Turnarounds)
-  // =========================================================================
-  {
-    id: 'prog_passing_t_d64_t6_maj',
-    nameRu: 'Проходящий оборот T — D6/4 — T6 (мажор)',
-    formula: 'T — D6/4 — T6',
-    category: 'passing',
-    categoryNameRu: 'Проходящий оборот',
-    rootDegree: 'I',
-    scaleMode: 'major',
-    bassMotionRu: 'Восходящее плавное движение: I → II → III',
-    sopranoMotionRu: 'Противоположное нисходящее движение: III → II → I',
-    voiceLeadingExplanationRu: 'Классический проходящий оборот. Бас и сопрано движутся во встречном плавном движении (децима/секста). Тенор удерживает общий звук V ступени (органный пункт). D6/4 берется на слабой доле.',
-    usageContextRu: 'Применяется для расширения тонической гармонии в экспозициях и развивающих разделах без остановки движения.',
-    steps: [
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоническое трезвучие',
-        satbOffsets: [-12, 7, 12, 16], // Bass I(0-12), Tenor V(7), Alto I(12), Soprano III(16)
-        voiceDegreesRu: { soprano: 'III ступень', alto: 'I ступень', tenor: 'V ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'D6/4',
-        degreeRoman: 'V',
-        nameRu: 'Проходящий квартсекстаккорд',
-        satbOffsets: [-10, 7, 11, 14], // Bass II(2-12), Tenor V(7), Alto VII(11), Soprano II(14)
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'VII ступень (вводный)', tenor: 'V ступень', bass: 'II ступень' },
-      },
-      {
-        symbol: 'T6',
-        degreeRoman: 'I',
-        nameRu: 'Тонический секстаккорд',
-        satbOffsets: [-8, 7, 12, 12], // Bass III(4-12), Tenor V(7), Alto I(12), Soprano I(12)
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'I ступень', tenor: 'V ступень', bass: 'III ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_passing_t6_d64_t_maj',
-    nameRu: 'Нисходящий проходящий оборот T6 — D6/4 — T (мажор)',
-    formula: 'T6 — D6/4 — T',
-    category: 'passing',
-    categoryNameRu: 'Проходящий оборот',
-    rootDegree: 'I',
-    scaleMode: 'major',
-    bassMotionRu: 'Нисходящее плавное движение: III → II → I',
-    sopranoMotionRu: 'Противоположное восходящее движение: I → II → III',
-    voiceLeadingExplanationRu: 'Обратный ход проходящего оборота: бас плавно спускается от терции к приме тоники, сопрано поднимается. D6/4 выполняет функцию мягкой проходящей доминанты.',
-    usageContextRu: 'Часто завершает построения или возвращает движение от секстаккорда к устойчивому трезвучию.',
-    steps: [
-      {
-        symbol: 'T6',
-        degreeRoman: 'I',
-        nameRu: 'Тонический секстаккорд',
-        satbOffsets: [-8, 7, 12, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'I ступень', tenor: 'V ступень', bass: 'III ступень' },
-      },
-      {
-        symbol: 'D6/4',
-        degreeRoman: 'V',
-        nameRu: 'Проходящий квартсекстаккорд',
-        satbOffsets: [-10, 7, 11, 14],
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'VII ступень', tenor: 'V ступень', bass: 'II ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоническое трезвучие',
-        satbOffsets: [-12, 7, 12, 16],
-        voiceDegreesRu: { soprano: 'III ступень', alto: 'I ступень', tenor: 'V ступень', bass: 'I ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_passing_s_t64_s6_maj',
-    nameRu: 'Субдоминантовый проходящий оборот S — T6/4 — S6',
-    formula: 'S — T6/4 — S6',
-    category: 'passing',
-    categoryNameRu: 'Проходящий оборот',
-    rootDegree: 'IV',
-    scaleMode: 'major',
-    bassMotionRu: 'Восходящее движение в субдоминантовой сфере: IV → V → VI',
-    sopranoMotionRu: 'Нисходящее противоположное движение сопрано к терции: VI → V → IV',
-    voiceLeadingExplanationRu: 'Проходящий квартсекстаккорд тоники T6/4 на слабой доле между аккордами субдоминанты. Бас и сопрано в противоположном движении без параллелизмов. Тенор держит общий звук I ступени.',
-    usageContextRu: 'Используется в середине музыкальных тем для динамического развития плагальной сферы.',
-    steps: [
-      {
-        symbol: 'S5/3',
-        degreeRoman: 'IV',
-        nameRu: 'Субдоминантовое трезвучие',
-        satbOffsets: [-7, 0, 12, 17], // Bass IV(5-12), Tenor I(0), Alto I(12), Soprano VI(17)
-        voiceDegreesRu: { soprano: 'VI ступень', alto: 'I ступень', tenor: 'I ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'T6/4',
-        degreeRoman: 'I',
-        nameRu: 'Проходящий квартсекстаккорд',
-        satbOffsets: [-5, 0, 12, 16], // Bass V(7-12), Tenor I(0), Alto I(12), Soprano III(16)
-        voiceDegreesRu: { soprano: 'III ступень', alto: 'I ступень', tenor: 'I ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'S6',
-        degreeRoman: 'IV',
-        nameRu: 'Субдоминантовый секстаккорд',
-        satbOffsets: [-3, 0, 17, 17], // Bass VI(9-12), Tenor I(0), Alto IV(17), Soprano IV(17)
-        voiceDegreesRu: { soprano: 'IV ступень', alto: 'IV ступень', tenor: 'I ступень', bass: 'VI ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_passing_t_vii6_t6_maj',
-    nameRu: 'Проходящий оборот T — VII6 — T6',
-    formula: 'T — VII6 — T6',
-    category: 'passing',
-    categoryNameRu: 'Проходящий оборот',
-    rootDegree: 'I',
-    scaleMode: 'major',
-    bassMotionRu: 'Поступенное движение баса: I → II → III',
-    sopranoMotionRu: 'Встречное движение сопрано: III → II → I',
-    voiceLeadingExplanationRu: 'Проходящий секстаккорд VII ступени (VII6) с удвоением баса (II ступени), соединяющий T5/3 и T6. Звучит мягче, чем D6/4.',
-    usageContextRu: 'Характерен для музыки Баха, Моцарта и Бетховена в строгом хоровом складе.',
-    steps: [
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоническое трезвучие',
-        satbOffsets: [-12, 4, 12, 16],
-        voiceDegreesRu: { soprano: 'III ступень', alto: 'I ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'VII6',
-        degreeRoman: 'VII',
-        nameRu: 'Проходящий секстаккорд VII ступени',
-        satbOffsets: [-10, 5, 11, 14],
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'VII ступень', tenor: 'IV ступень', bass: 'II ступень' },
-      },
-      {
-        symbol: 'T6',
-        degreeRoman: 'I',
-        nameRu: 'Тонический секстаккорд',
-        satbOffsets: [-8, 7, 12, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'I ступень', tenor: 'V ступень', bass: 'III ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 2. ВСПОМОГАТЕЛЬНЫЕ ОБОРОТЫ (Auxiliary Turnarounds)
-  // =========================================================================
-  {
-    id: 'prog_aux_t_s64_t_maj',
-    nameRu: 'Тонический вспомогательный оборот T — S6/4 — T',
-    formula: 'T — S6/4 — T',
-    category: 'auxiliary',
-    categoryNameRu: 'Вспомогательный оборот',
-    rootDegree: 'I',
-    scaleMode: 'both',
-    bassMotionRu: 'Выдержанный органчик баса на I ступени: I — I — I',
-    sopranoMotionRu: 'Выдержанный тон или вспомогательный ход: III → IV → III',
-    voiceLeadingExplanationRu: 'Бас и сопрано остаются на месте (или сопрано делает секундовый шаг). Терцовый и квинтовый тоны тоники делают шаг на секунду вверх к звукам субдоминанты и плавно возвращаются назад.',
-    usageContextRu: 'Классическое "колыбельное" или молитвенное расширение тоники (Чайковский, Рахманинов, церковная музыка).',
-    steps: [
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоническое трезвучие',
-        satbOffsets: [-12, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'S6/4',
-        degreeRoman: 'IV',
-        nameRu: 'Вспомогательный квартсекстаккорд',
-        satbOffsets: [-12, 5, 9, 12], // S6/4 on tonic bass (F, A on C bass)
-        voiceDegreesRu: { soprano: 'I ступень (общий)', alto: 'VI ступень', tenor: 'IV ступень', bass: 'I ступень (органный)' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоническое трезвучие',
-        satbOffsets: [-12, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_aux_d_t64_d_maj',
-    nameRu: 'Доминантовый вспомогательный оборот D — T6/4 — D',
-    formula: 'D — T6/4 — D',
-    category: 'auxiliary',
-    categoryNameRu: 'Вспомогательный оборот',
-    rootDegree: 'V',
-    scaleMode: 'both',
-    bassMotionRu: 'Органный пункт доминанты в басу: V — V — V',
-    sopranoMotionRu: 'Вспомогательное опевание доминантовых тонов',
-    voiceLeadingExplanationRu: 'Вспомогательный оборот на доминантовой педали. Бас V ступени удерживается, средние голоса временно образуют тонический квартсекстаккорд и возвращаются в доминанту.',
-    usageContextRu: 'Звучит в предыктах перед репризой или генеральных кульминациях для нагнетания ожидания.',
-    steps: [
-      {
-        symbol: 'D5/3',
-        degreeRoman: 'V',
-        nameRu: 'Доминантовое трезвучие',
-        satbOffsets: [-5, 2, 7, 11], // Bass V, Tenor II, Alto V, Soprano VII
-        voiceDegreesRu: { soprano: 'VII ступень', alto: 'V ступень', tenor: 'II ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T6/4',
-        degreeRoman: 'I',
-        nameRu: 'Вспомогательный квартсекстаккорд тоники',
-        satbOffsets: [-5, 4, 7, 12], // Bass V, Tenor III, Alto V, Soprano I
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'D5/3',
-        degreeRoman: 'V',
-        nameRu: 'Доминантовое трезвучие',
-        satbOffsets: [-5, 2, 7, 11],
-        voiceDegreesRu: { soprano: 'VII ступень', alto: 'V ступень', tenor: 'II ступень', bass: 'V ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_aux_plagal_t_s_t',
-    nameRu: 'Классический плагальный оборот T — S — T',
-    formula: 'T — S — T',
-    category: 'auxiliary',
-    categoryNameRu: 'Вспомогательный оборот',
-    rootDegree: 'I',
-    scaleMode: 'both',
-    bassMotionRu: 'Квартовое плагальное движение: I → IV → I',
-    sopranoMotionRu: 'Удержание общего тона I ступени или ход III → IV → III',
-    voiceLeadingExplanationRu: 'Мягкий плагальный оборот. Сохраняется общий тон I ступени в верхнем голосе, остальные голоса делают секундовый шаг вверх и возвращаются.',
-    usageContextRu: 'Завершение произведений ("Аминь"), создание светлого или медитативного характера.',
-    steps: [
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'S5/3',
-        degreeRoman: 'IV',
-        nameRu: 'Субдоминанта',
-        satbOffsets: [-7, 5, 9, 12],
-        voiceDegreesRu: { soprano: 'I ступень (общий)', alto: 'VI ступень', tenor: 'IV ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 3. ФРИГИЙСКИЕ ОБОРОТЫ (Phrygian Progressions)
-  // =========================================================================
-  {
-    id: 'prog_phrygian_classic_min',
-    nameRu: 'Фригийский оборот t — t6 — S6 — D (минор)',
-    formula: 't — t6 — S6 — D',
-    category: 'phrygian',
-    categoryNameRu: 'Фригийский оборот',
-    rootDegree: 'I',
-    scaleMode: 'minor',
-    bassMotionRu: 'Легендарный нисходящий тетрахорд: I → VII (нат.) → VI → V (Ля → Соль → Фа → Ми)',
-    sopranoMotionRu: 'Восходяще-нисходящая арка: I → II → IV → III (с вводным тоном VII# в доминанте)',
-    voiceLeadingExplanationRu: 'Классический фригийский оборот минора (lamento / chaconne). Бас шаг за шагом спускается от тоники к доминанте на полутон VI → V (фригийская секунда). Оборот завершается половинной каденцией на мажорной гармонической доминанте D.',
-    usageContextRu: 'Скорбные, драматические или патетические темы барокко и романтизма (Бах "Passacaglia", Перселл "Dido\'s Lament", Шопен).',
-    steps: [
-      {
-        symbol: 't5/3',
-        degreeRoman: 'i',
-        nameRu: 'Тоническое минорное трезвучие',
-        satbOffsets: [-12, 3, 7, 12], // Bass I, Tenor III, Alto V, Soprano I
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 't6 (натур.)',
-        degreeRoman: 'i6',
-        nameRu: 'Тонический секстаккорд (натур. VII в басу)',
-        satbOffsets: [-14, 3, 7, 14], // Bass VII nat (-2), Tenor III, Alto V, Soprano II
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'VII натур. ступень' },
-      },
-      {
-        symbol: 's6',
-        degreeRoman: 'iv6',
-        nameRu: 'Субдоминантовый секстаккорд',
-        satbOffsets: [-16, 5, 8, 12], // Bass VI (-4 / 8), Tenor IV, Alto VI, Soprano I
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'VI ступень', tenor: 'IV ступень', bass: 'VI ступень' },
-      },
-      {
-        symbol: 'D5/3 (гарм.)',
-        degreeRoman: 'V',
-        nameRu: 'Мажорная гармоническая доминанта',
-        satbOffsets: [-17, 2, 7, 11], // Bass V (-5 / 7), Tenor II, Alto V, Soprano VII#
-        voiceDegreesRu: { soprano: 'VII# вводный тон', alto: 'V ступень', tenor: 'II ступень', bass: 'V ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_phrygian_d6_min',
-    nameRu: 'Фригийский оборот t — D6 — S6 — D',
-    formula: 't — D6 — S6 — D',
-    category: 'phrygian',
-    categoryNameRu: 'Фригийский оборот',
-    rootDegree: 'I',
-    scaleMode: 'minor',
-    bassMotionRu: 'Нисходящий бас: I → VII (нат. D6) → VI → V',
-    sopranoMotionRu: 'Плавное голосоведение: I → II → IV → III',
-    voiceLeadingExplanationRu: 'Разновидность фригийского оборота с натуральной минорной доминантой в виде секстаккорда на втором шаге (d6). Звучит прозрачно и строго в духе строгой полифонии.',
-    usageContextRu: 'Основа старинных вариаций на бассо остинато (пассакалии, фолии).',
-    steps: [
-      {
-        symbol: 't5/3',
-        degreeRoman: 'i',
-        nameRu: 'Минорная тоника',
-        satbOffsets: [-12, 3, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'd6 (натур.)',
-        degreeRoman: 'v6',
-        nameRu: 'Натуральный доминантовый секстаккорд',
-        satbOffsets: [-14, 2, 7, 14],
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'V ступень', tenor: 'II ступень', bass: 'VII натур. ступень' },
-      },
-      {
-        symbol: 's6',
-        degreeRoman: 'iv6',
-        nameRu: 'Субдоминантовый секстаккорд',
-        satbOffsets: [-16, 5, 8, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'VI ступень', tenor: 'IV ступень', bass: 'VI ступень' },
-      },
-      {
-        symbol: 'D5/3',
-        degreeRoman: 'V',
-        nameRu: 'Гармоническая мажорная доминанта',
-        satbOffsets: [-17, 2, 7, 11],
-        voiceDegreesRu: { soprano: 'VII# вводный тон', alto: 'V ступень', tenor: 'II ступень', bass: 'V ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_phrygian_alt_s_min',
-    nameRu: 'Фригийский полукаданс с s#IV (Sальт — D)',
-    formula: 't — s#IV — D',
-    category: 'phrygian',
-    categoryNameRu: 'Фригийский оборот',
-    rootDegree: 'I',
-    scaleMode: 'minor',
-    bassMotionRu: 'Полутоновое сжатие в басу: VI → V',
-    sopranoMotionRu: 'Встречное полутоновое расширение: #IV → V',
-    voiceLeadingExplanationRu: 'Острейший полукаданс с альтерированной субдоминантой (увеличенный терцкварт / итальянская секста). Звуки #IV и VI ступени с двух сторон в противоположном движении сходятся в октавный тон доминанты V.',
-    usageContextRu: 'Кульминационные трагические полукаденции в сонатах и симфониях Бетховена, Брамса.',
-    steps: [
-      {
-        symbol: 't5/3',
-        degreeRoman: 'i',
-        nameRu: 'Минорная тоника',
-        satbOffsets: [-12, 3, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 's#IV (Sальт)',
-        degreeRoman: 'iv#',
-        nameRu: 'Альтерированная субдоминанта (#IV ступень)',
-        satbOffsets: [-16, 0, 6, 12], // Bass VI (-4), Tenor I, Alto #IV (+6), Soprano I
-        voiceDegreesRu: { soprano: 'I ступень', alto: '#IV альтер. тон', tenor: 'I ступень', bass: 'VI ступень' },
-      },
-      {
-        symbol: 'D5/3',
-        degreeRoman: 'V',
-        nameRu: 'Мажорная гармоническая доминанта',
-        satbOffsets: [-17, 2, 7, 11],
-        voiceDegreesRu: { soprano: 'VII# вводный тон', alto: 'V ступень', tenor: 'II ступень', bass: 'V ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 4. ПОЛНЫЕ КАДАНСОВЫЕ ОБОРОТЫ (Complete Cadential Progressions)
-  // =========================================================================
-  {
-    id: 'prog_cadence_full_t_s_k64_d7_t',
-    nameRu: 'Полная функциональная каденция T — S — K6/4 — D7 — T',
-    formula: 'T — S — K6/4 — D7 — T',
-    category: 'cadential',
-    categoryNameRu: 'Кадансовый оборот',
-    rootDegree: 'I',
-    scaleMode: 'both',
-    bassMotionRu: 'Фундаментальный кадансовый бас: I → IV → V → V → I',
-    sopranoMotionRu: 'Плавное голосоведение с разрешением септимы D7 вниз и вводного тона вверх',
-    voiceLeadingExplanationRu: 'Главная каденция классической музыки. Охватывает все три функции (T - S - D - T). K6/4 на сильной доле концентрирует тонические задержания, разрешающиеся в D7, который полнозвучно разрешается в тонику.',
-    usageContextRu: 'Завершение музыкальных периодов, частей симфоний, сонат и песен.',
-    steps: [
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'S5/3',
-        degreeRoman: 'IV',
-        nameRu: 'Субдоминанта',
-        satbOffsets: [-7, 5, 9, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'VI ступень', tenor: 'IV ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'K6/4',
-        degreeRoman: 'K6/4',
-        nameRu: 'Кадансовый квартсекстаккорд',
-        satbOffsets: [-5, 4, 7, 12], // Bass V, Tenor III, Alto V, Soprano I
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11], // Bass V, Tenor II, Alto IV (7th), Soprano VII (leading tone)
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3 (неполн.)',
-        degreeRoman: 'I',
-        nameRu: 'Тоника с утроенной примой',
-        satbOffsets: [-12, 0, 4, 12], // Bass I, Tenor I, Alto III, Soprano I
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_cadence_ii65_k64_d7_t',
-    nameRu: 'Каденция с квинтсекстаккордом II6/5 — K6/4 — D7 — T',
-    formula: 'T — II6/5 — K6/4 — D7 — T',
-    category: 'cadential',
-    categoryNameRu: 'Кадансовый оборот',
-    rootDegree: 'I',
-    scaleMode: 'major',
-    bassMotionRu: 'Кадансовый бас с шагом IV в субдоминанте: I → IV → V → V → I',
-    sopranoMotionRu: 'Мелодический спуск от II ступени к разрешению',
-    voiceLeadingExplanationRu: 'Квинтсекстаккорд II ступени II6/5 — самый употребительный преддоминантовый септаккорд. Бас IV ступени делает мягкий шаг в V ступень кадансового квартсекстаккорда.',
-    usageContextRu: 'Золотой стандарт венской классики (Гайдн, Моцарт, Бетховен) в главных каденциях.',
-    steps: [
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'II6/5',
-        degreeRoman: 'II6/5',
-        nameRu: 'Квинтсекстаккорд II ступени',
-        satbOffsets: [-7, 2, 9, 14], // Bass IV(5), Tenor II(2), Alto VI(9), Soprano II(14)
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'VI ступень', tenor: 'II ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'K6/4',
-        degreeRoman: 'K6/4',
-        nameRu: 'Кадансовый квартсекстаккорд',
-        satbOffsets: [-5, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_cadence_neapolitan_n6_min',
-    nameRu: 'Неаполитанская каденция t — N6 — K6/4 — D7 — t',
-    formula: 't — N6 — K6/4 — D7 — t',
-    category: 'cadential',
-    categoryNameRu: 'Кадансовый оборот',
-    rootDegree: 'I',
-    scaleMode: 'minor',
-    bassMotionRu: 'Кадансовый бас с неаполитанской субдоминантой: I → IV → V → V → I',
-    sopranoMotionRu: 'Характерный ход с пониженной II ступенью (bII): I → bII → I → VII# → I',
-    voiceLeadingExplanationRu: 'Неаполитанский секстаккорд (N6) — мажорное трезвучие на пониженной II ступени минора (bII), взятое в обращении с басом IV ступени. Создает глубочайший романтический колорит и разрешается через кадансовый квартсекстаккорд.',
-    usageContextRu: 'Драматические патетические каденции (Шопен "Ноктюрны", Бетховен "Лунная соната", Лист).',
-    steps: [
-      {
-        symbol: 't5/3',
-        degreeRoman: 'i',
-        nameRu: 'Минорная тоника',
-        satbOffsets: [-12, 3, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'N6 (Неаполитанский)',
-        degreeRoman: 'bII6',
-        nameRu: 'Неаполитанский секстаккорд (bII на басу IV)',
-        satbOffsets: [-7, 1, 8, 13], // Bass IV(5), Tenor bII(1), Alto VI(8), Soprano bII(13)
-        voiceDegreesRu: { soprano: 'bII пониженная ступень', alto: 'VI ступень', tenor: 'bII пониженная', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'k6/4',
-        degreeRoman: 'k6/4',
-        nameRu: 'Кадансовый квартсекстаккорд',
-        satbOffsets: [-5, 3, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII# вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 't5/3',
-        degreeRoman: 'i',
-        nameRu: 'Минорная тоника',
-        satbOffsets: [-12, 0, 3, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III минорная терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 5. ОБОРОТЫ ОТ II СТУПЕНИ (II Degree Progressions)
-  // =========================================================================
-  {
-    id: 'prog_turn_ii65_d7_t_maj',
-    nameRu: 'Оборот от II ступени: II6/5 — D7 — T',
-    formula: 'II6/5 — D7 — T',
-    category: 'cadential',
-    categoryNameRu: 'Оборот от II ступени',
-    rootDegree: 'II',
-    scaleMode: 'major',
-    bassMotionRu: 'Шаг от субдоминантового баса к доминанте и тонике: IV → V → I',
-    sopranoMotionRu: 'Плавный спуск II → VII → I',
-    voiceLeadingExplanationRu: 'Квинтсекстаккорд II ступени напрямую переходит в доминантсептаккорд D7 с сохранением общих звуков.',
-    usageContextRu: 'Широко применяется в сонатах Моцарта, симфониях Гайдна и романсах.',
-    steps: [
-      {
-        symbol: 'II6/5',
-        degreeRoman: 'II6/5',
-        nameRu: 'Квинтсекстаккорд II ступени',
-        satbOffsets: [-7, 2, 9, 14], // Bass IV, Tenor II, Alto VI, Soprano II
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'VI ступень', tenor: 'II ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11], // Bass V, Tenor II, Alto IV, Soprano VII
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоническое трезвучие',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_turn_ii_v7_i_jazz',
-    nameRu: 'Джазово-классическая каденция ii — V7 — I',
-    formula: 'II — V7 — I',
-    category: 'cadential',
-    categoryNameRu: 'Оборот от II ступени',
-    rootDegree: 'II',
-    scaleMode: 'both',
-    bassMotionRu: 'Квинтовый шаг баса: II → V → I',
-    sopranoMotionRu: 'Линеарный спуск: VI → VII → I (или IV → IV → III)',
-    voiceLeadingExplanationRu: 'Классический оборот II - V - I по квинтовому кругу. Самая популярная гармоническая формула в джазе и академической музыке.',
-    usageContextRu: 'Основа джазовых стандартов, эстрадной гармонии и классических связок.',
-    steps: [
-      {
-        symbol: 'II5/3',
-        degreeRoman: 'II',
-        nameRu: 'Трезвучие II ступени',
-        satbOffsets: [-10, 2, 5, 9], // Bass II, Tenor II, Alto IV, Soprano VI
-        voiceDegreesRu: { soprano: 'VI ступень', alto: 'IV ступень', tenor: 'II ступень', bass: 'II ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11], // Bass V, Tenor II, Alto IV, Soprano VII
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоническое трезвучие',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 6. ОБОРОТЫ ОТ III СТУПЕНИ (III Degree Progressions)
-  // =========================================================================
-  {
-    id: 'prog_turn_iii_vi_ii_v_t',
-    nameRu: 'Медиантовый оборот по квартам: III — VI — II — V — T',
-    formula: 'III — VI — II — V — T',
-    category: 'sequence',
-    categoryNameRu: 'Оборот от III ступени',
-    rootDegree: 'III',
-    scaleMode: 'major',
-    bassMotionRu: 'Кварто-квинтовый ход от медианты: III → VI → II → V → I',
-    sopranoMotionRu: 'Плавный нисходящий кантиленный голос',
-    voiceLeadingExplanationRu: 'Оборот начинается с медиантового трезвучия III ступени и развивает кварто-квинтовую цепочку тяготений к тонике.',
-    usageContextRu: 'Развивающие разделы разработок, секвенции в классицизме и романтизме.',
-    steps: [
-      {
-        symbol: 'III5/3',
-        degreeRoman: 'III',
-        nameRu: 'Медиантовое трезвучие',
-        satbOffsets: [-8, 4, 7, 11],
-        voiceDegreesRu: { soprano: 'VII ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'III ступень' },
-      },
-      {
-        symbol: 'VI5/3',
-        degreeRoman: 'VI',
-        nameRu: 'Субмедианта (VI ступень)',
-        satbOffsets: [-3, 0, 4, 9],
-        voiceDegreesRu: { soprano: 'VI ступень', alto: 'III ступень', tenor: 'I ступень', bass: 'VI ступень' },
-      },
-      {
-        symbol: 'II6/5',
-        degreeRoman: 'II6/5',
-        nameRu: 'Квинтсекстаккорд II ступени',
-        satbOffsets: [-7, 2, 9, 14],
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'VI ступень', tenor: 'II ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 7. ОБОРОТЫ ОТ IV СТУПЕНИ (IV Degree Progressions)
-  // =========================================================================
-  {
-    id: 'prog_turn_s_k64_d7_t',
-    nameRu: 'Субдоминантовый каданс: S — K6/4 — D7 — T',
-    formula: 'S — K6/4 — D7 — T',
-    category: 'cadential',
-    categoryNameRu: 'Оборот от IV ступени',
-    rootDegree: 'IV',
-    scaleMode: 'both',
-    bassMotionRu: 'Движение баса от субдоминанты: IV → V → V → I',
-    sopranoMotionRu: 'Разрешение VI → V → IV → III',
-    voiceLeadingExplanationRu: 'Оборот начинается прямо с субдоминанты и через кадансовый квартсекстаккорд и D7 стремится к устойчивому завершению.',
-    usageContextRu: 'Вторая половина музыкальных предложений, связующие партии.',
-    steps: [
-      {
-        symbol: 'S5/3',
-        degreeRoman: 'IV',
-        nameRu: 'Субдоминанта',
-        satbOffsets: [-7, 5, 9, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'VI ступень', tenor: 'IV ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'K6/4',
-        degreeRoman: 'K6/4',
-        nameRu: 'Кадансовый квартсекстаккорд',
-        satbOffsets: [-5, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_turn_s_d7_t',
-    nameRu: 'Быстрый полный оборот S — D7 — T',
-    formula: 'S — D7 — T',
-    category: 'cadential',
-    categoryNameRu: 'Оборот от IV ступени',
-    rootDegree: 'IV',
-    scaleMode: 'both',
-    bassMotionRu: 'Ход IV → V → I',
-    sopranoMotionRu: 'Нисходящее движение к тонике',
-    voiceLeadingExplanationRu: 'Компактный субдоминантово-доминантовый каданс без вспомогательных квартсекстаккордов.',
-    usageContextRu: 'Быстрые темы, танцевальные формы (менуэты, скерцо, вальсы).',
-    steps: [
-      {
-        symbol: 'S5/3',
-        degreeRoman: 'IV',
-        nameRu: 'Субдоминанта',
-        satbOffsets: [-7, 5, 9, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'VI ступень', tenor: 'IV ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 8. ОБОРОТЫ ОТ V СТУПЕНИ (V Degree Progressions / Deceptive)
-  // =========================================================================
-  {
-    id: 'prog_deceptive_d7_vi_maj',
-    nameRu: 'Прерванный оборот: D7 — VI — S6 — D — T',
-    formula: 'D7 — VI — S6 — D — T',
-    category: 'deceptive',
-    categoryNameRu: 'Прерванный оборот (от V)',
-    rootDegree: 'V',
-    scaleMode: 'major',
-    bassMotionRu: 'Прерванный шаг в VI ступень: V → VI → IV → V → I',
-    sopranoMotionRu: 'Вводный тон VII идет вверх в I ступень в трезвучии VI',
-    voiceLeadingExplanationRu: 'Классический прерванный каданс. Доминанта вместо тоники разрешается в трезвучие VI ступени с удвоением терции (I ступени), продлевая развитие.',
-    usageContextRu: 'Кульминации, создание драматической неожиданности перед генеральной каденцией.',
-    steps: [
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'VI5/3',
-        degreeRoman: 'VI',
-        nameRu: 'Прерванное трезвучие VI ступени',
-        satbOffsets: [-3, 0, 4, 12], // Bass VI, Tenor I, Alto III, Soprano I
-        voiceDegreesRu: { soprano: 'I ступень (удвоение)', alto: 'III ступень', tenor: 'I ступень', bass: 'VI ступень' },
-      },
-      {
-        symbol: 'S6',
-        degreeRoman: 'IV6',
-        nameRu: 'Субдоминантовый секстаккорд',
-        satbOffsets: [-3, 0, 5, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'IV ступень', tenor: 'I ступень', bass: 'VI ступень' },
-      },
-      {
-        symbol: 'D5/3',
-        degreeRoman: 'V',
-        nameRu: 'Доминанта',
-        satbOffsets: [-5, 2, 7, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'V ступень', tenor: 'II ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Окончательная тоника',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_turn_d_k64_d7_t',
-    nameRu: 'Предыктовый оборот D — K6/4 — D7 — T',
-    formula: 'D — K6/4 — D7 — T',
-    category: 'cadential',
-    categoryNameRu: 'Оборот от V ступени',
-    rootDegree: 'V',
-    scaleMode: 'both',
-    bassMotionRu: 'Органный бас V ступени перед падением в тонику: V — V — V → I',
-    sopranoMotionRu: 'Опевание тоники и вводного тона',
-    voiceLeadingExplanationRu: 'Оборот начинается с доминанты на басу V, насыщается задержанием кадансового квартсекстаккорда и разрешается в D7 и T.',
-    usageContextRu: 'Предыкты, ферматы перед каденциями в инструментальных концертах.',
-    steps: [
-      {
-        symbol: 'D5/3',
-        degreeRoman: 'V',
-        nameRu: 'Доминанта',
-        satbOffsets: [-5, 2, 7, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'V ступень', tenor: 'II ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'K6/4',
-        degreeRoman: 'K6/4',
-        nameRu: 'Кадансовый квартсекстаккорд',
-        satbOffsets: [-5, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 9. ОБОРОТЫ ОТ VI СТУПЕНИ (VI Degree Progressions)
-  // =========================================================================
-  {
-    id: 'prog_turn_vi_ii6_k64_d7_t',
-    nameRu: 'Оборот через субмедианту: VI — II6 — K6/4 — D7 — T',
-    formula: 'VI — II6 — K6/4 — D7 — T',
-    category: 'cadential',
-    categoryNameRu: 'Оборот от VI ступени',
-    rootDegree: 'VI',
-    scaleMode: 'major',
-    bassMotionRu: 'Шаг от VI ступени к субдоминантовому басу: VI → IV → V → V → I',
-    sopranoMotionRu: 'Плавный мелодический рисунок',
-    voiceLeadingExplanationRu: 'VI ступень открывает субдоминантовую группу и мягко перетекает в II6 и далее в полную каденцию.',
-    usageContextRu: 'Лирические темы Шопена, Чайковского, Рахманинова.',
-    steps: [
-      {
-        symbol: 'VI5/3',
-        degreeRoman: 'VI',
-        nameRu: 'Субмедианта (VI ступень)',
-        satbOffsets: [-3, 0, 4, 9],
-        voiceDegreesRu: { soprano: 'VI ступень', alto: 'III ступень', tenor: 'I ступень', bass: 'VI ступень' },
-      },
-      {
-        symbol: 'II6',
-        degreeRoman: 'II6',
-        nameRu: 'Секстаккорд II ступени',
-        satbOffsets: [-7, 2, 5, 14],
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'IV ступень', tenor: 'II ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'K6/4',
-        degreeRoman: 'K6/4',
-        nameRu: 'Кадансовый квартсекстаккорд',
-        satbOffsets: [-5, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'D7',
-        degreeRoman: 'V7',
-        nameRu: 'Доминантсептаккорд',
-        satbOffsets: [-5, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'IV септима', tenor: 'II квинта', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоника',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 10. ОБОРОТЫ ОТ VII СТУПЕНИ (VII Degree Progressions / Leading Tone)
-  // =========================================================================
-  {
-    id: 'prog_turn_vii6_t_maj',
-    nameRu: 'Вводный оборот: VII6 — T',
-    formula: 'VII6 — T',
-    category: 'auxiliary',
-    categoryNameRu: 'Оборот от VII ступени',
-    rootDegree: 'VII',
-    scaleMode: 'both',
-    bassMotionRu: 'Шаг II → I или VII → I',
-    sopranoMotionRu: 'Разрешение вводного тона VII# → I',
-    voiceLeadingExplanationRu: 'Вводный секстаккорд VII6 выполняет функцию мягкой доминанты и разрешается в полное тоническое трезвучие.',
-    usageContextRu: 'Строгий хоровой стиль, полифония Возрождения и Барокко.',
-    steps: [
-      {
-        symbol: 'VII6',
-        degreeRoman: 'VII6',
-        nameRu: 'Вводный секстаккорд VII ступени',
-        satbOffsets: [-10, 5, 11, 14], // Bass II, Tenor IV, Alto VII, Soprano II
-        voiceDegreesRu: { soprano: 'II ступень', alto: 'VII ступень', tenor: 'IV ступень', bass: 'II ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Тоническое трезвучие',
-        satbOffsets: [-12, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-    ],
-  },
-  {
-    id: 'prog_turn_vii7_t_maj',
-    nameRu: 'Вводный септаккорд: VII7 — D6/5 — T',
-    formula: 'VII7 — D6/5 — T',
-    category: 'cadential',
-    categoryNameRu: 'Оборот от VII ступени',
-    rootDegree: 'VII',
-    scaleMode: 'both',
-    bassMotionRu: 'Бас VII → VII → I',
-    sopranoMotionRu: 'Спуск от септимы VI к вводному тону и тонике',
-    voiceLeadingExplanationRu: 'Уменьшенный или малый вводный септаккорд переходит во внутрифункциональный квинтсекстаккорд доминанты D6/5 и устойчиво разрешается в тонику.',
-    usageContextRu: 'Драматические кульминации у Баха, Моцарта ("Реквием"), Бетховена.',
-    steps: [
-      {
-        symbol: 'VII7',
-        degreeRoman: 'VII7',
-        nameRu: 'Вводный септаккорд VII ступени',
-        satbOffsets: [-1, 2, 5, 9], // Bass VII, Tenor II, Alto IV, Soprano VI
-        voiceDegreesRu: { soprano: 'VI ступень', alto: 'IV ступень', tenor: 'II ступень', bass: 'VII ступень' },
-      },
-      {
-        symbol: 'D6/5',
-        degreeRoman: 'V6/5',
-        nameRu: 'Доминантовый квинтсекстаккорд',
-        satbOffsets: [-1, 2, 5, 7], // Bass VII, Tenor II, Alto IV, Soprano V
-        voiceDegreesRu: { soprano: 'V ступень', alto: 'IV септима', tenor: 'II квинта', bass: 'VII вводный тон' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'Полное тоническое трезвучие',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-
-  // =========================================================================
-  // 11. ЗОЛОТАЯ КВИНТОВАЯ СЕКВЕНЦИЯ (Circle of Fifths Golden Sequence)
-  // =========================================================================
-  {
-    id: 'prog_circle_of_fifths_golden',
-    nameRu: 'Золотая секвенция (квинтовый круг): I — IV — VII — III — VI — II — V — I',
-    formula: 'I — IV — VII — III — VI — II — V — I',
-    category: 'sequence',
-    categoryNameRu: 'Квинтовая секвенция (Золотая)',
-    rootDegree: 'I',
-    scaleMode: 'both',
-    bassMotionRu: 'Нисходящая квинтовая цепь: I → IV → VII → III → VI → II → V → I',
-    sopranoMotionRu: 'Цепное плавное голосоведение через все ступени лада',
-    voiceLeadingExplanationRu: 'Фундаментальная гармоническая секвенция европейской музыки (Бах, Вивальди "Времена года", Гендель). Проходит через трезвучия всех семи ступеней лада по нисходящим квинтам и восходящим квартам.',
-    usageContextRu: 'Универсальная основа музыкального барокко, классических разработок, романтических тем и джаза.',
-    steps: [
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'I ступень (Тоника)',
-        satbOffsets: [-12, 4, 7, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'I ступень' },
-      },
-      {
-        symbol: 'S5/3',
-        degreeRoman: 'IV',
-        nameRu: 'IV ступень (Субдоминанта)',
-        satbOffsets: [-7, 5, 9, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'VI ступень', tenor: 'IV ступень', bass: 'IV ступень' },
-      },
-      {
-        symbol: 'VII5/3',
-        degreeRoman: 'VII',
-        nameRu: 'VII ступень (Вводное трезвучие)',
-        satbOffsets: [-1, 2, 5, 11],
-        voiceDegreesRu: { soprano: 'VII ступень', alto: 'IV ступень', tenor: 'II ступень', bass: 'VII ступень' },
-      },
-      {
-        symbol: 'III5/3',
-        degreeRoman: 'III',
-        nameRu: 'III ступень (Медианта)',
-        satbOffsets: [-8, 4, 7, 11],
-        voiceDegreesRu: { soprano: 'VII ступень', alto: 'V ступень', tenor: 'III ступень', bass: 'III ступень' },
-      },
-      {
-        symbol: 'VI5/3',
-        degreeRoman: 'VI',
-        nameRu: 'VI ступень (Субмедианта)',
-        satbOffsets: [-3, 0, 4, 9],
-        voiceDegreesRu: { soprano: 'VI ступень', alto: 'III ступень', tenor: 'I ступень', bass: 'VI ступень' },
-      },
-      {
-        symbol: 'II5/3',
-        degreeRoman: 'II',
-        nameRu: 'II ступень (Супертоника)',
-        satbOffsets: [-10, 2, 5, 9],
-        voiceDegreesRu: { soprano: 'VI ступень', alto: 'IV ступень', tenor: 'II ступень', bass: 'II ступень' },
-      },
-      {
-        symbol: 'D5/3',
-        degreeRoman: 'V',
-        nameRu: 'V ступень (Доминанта)',
-        satbOffsets: [-5, 2, 7, 11],
-        voiceDegreesRu: { soprano: 'VII вводный тон', alto: 'V ступень', tenor: 'II ступень', bass: 'V ступень' },
-      },
-      {
-        symbol: 'T5/3',
-        degreeRoman: 'I',
-        nameRu: 'I ступень (Итоговая тоника)',
-        satbOffsets: [-12, 0, 4, 12],
-        voiceDegreesRu: { soprano: 'I ступень', alto: 'III терция', tenor: 'I прима', bass: 'I ступень' },
-      },
-    ],
-  },
-];
+export interface RealizedProgressionStep {
+  symbol: string;
+  degreeRoman: string;
+  nameRu: string;
+  midisSATB: [number, number, number, number];
+  noteNamesSATB: [string, string, string, string];
+  voiceDegreesRu: {
+    soprano: string;
+    alto: string;
+    tenor: string;
+    bass: string;
+  };
+}
 
 export interface RealizedProgression {
   template: HarmonicProgressionTemplate;
   tonicNoteName: string;
-  tonicPitch: number; // 0..11
+  tonicPitch: number;
   scaleMode: 'major' | 'minor';
   keyNameRu: string;
-  revealed?: boolean;
-  voiceLeadingValidation?: VoiceLeadingCheckResult;
-  steps: {
-    symbol: string;
-    degreeRoman: string;
-    nameRu: string;
-    midisSATB: [number, number, number, number]; // [Bass, Tenor, Alto, Soprano]
-    noteNamesSATB: [string, string, string, string]; // [Bass, Tenor, Alto, Soprano]
-    voiceDegreesRu: {
-      soprano: string;
-      alto: string;
-      tenor: string;
-      bass: string;
-    };
-  }[];
+  revealed: boolean;
+  voiceLeadingValidation: VoiceLeadingCheckResult;
+  steps: RealizedProgressionStep[];
 }
 
+/**
+ * Fundamental Encyclopedia of Classical, Romantic, and Modern Harmonic Progressions (10 Classes)
+ * Strictly calculated SATB Voice-Leading offsets based on classical Conservatory rules.
+ */
+export const CLASSICAL_PROGRESSIONS: HarmonicProgressionTemplate[] = compileEncyclopedicProgressions();
+
+/**
+ * Format symbol prefix based on mode
+ */
 export function formatSymbolForMode(symbol: string, mode: 'major' | 'minor'): string {
-  let clean = symbol.replace('5/3', '5');
+  let clean = symbol.trim();
   if (mode === 'minor') {
     clean = clean
       .replace(/^T/, 't')
@@ -1135,9 +104,6 @@ export function formatSymbolForMode(symbol: string, mode: 'major' | 'minor'): st
   return clean;
 }
 
-/**
- * Generate a realized harmonic progression transposed to given tonic
- */
 export interface VoiceLeadingCheckResult {
   isValid: boolean;
   warnings: string[];
@@ -1166,6 +132,29 @@ export function checkVoiceLeading(
       warnings.push(`Переход ${s + 1}→${s + 2}: Все 4 голоса движутся в одну сторону.`);
     }
 
+    // Voice overlapping check (пересечение голосов при переходе)
+    const [b1, t1, a1, sop1] = satb1;
+    const [b2, t2, a2, sop2] = satb2;
+
+    if (t2 > a1) {
+      warnings.push(`Переход ${s + 1}→${s + 2}: Пересечение голосов (Тенор пошел выше прошлого звука Альта).`);
+    }
+    if (t2 < b1) {
+      warnings.push(`Переход ${s + 1}→${s + 2}: Пересечение голосов (Тенор пошел ниже прошлого звука Баса).`);
+    }
+    if (a2 > sop1) {
+      warnings.push(`Переход ${s + 1}→${s + 2}: Пересечение голосов (Альт пошел выше прошлого звука Сопрано).`);
+    }
+    if (a2 < t1) {
+      warnings.push(`Переход ${s + 1}→${s + 2}: Пересечение голосов (Альт пошел ниже прошлого звука Тенора).`);
+    }
+    if (sop2 < a1) {
+      warnings.push(`Переход ${s + 1}→${s + 2}: Пересечение голосов (Сопрано пошло ниже прошлого звука Альта).`);
+    }
+    if (b2 > t1) {
+      warnings.push(`Переход ${s + 1}→${s + 2}: Пересечение голосов (Бас пошел выше прошлого звука Тенора).`);
+    }
+
     for (let i = 0; i < 4; i++) {
       for (let j = i + 1; j < 4; j++) {
         if (isMoving[i] && isMoving[j]) {
@@ -1189,13 +178,136 @@ export function checkVoiceLeading(
   };
 }
 
+export function spellClassicalNoteName(noteMidi: number, tonicName: string, isMinor: boolean): string {
+  const notePC = ((noteMidi % 12) + 12) % 12;
+  const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'H'];
+  
+  const LETTER_NATURAL_PCS: Record<string, number> = {
+    'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'H': 11
+  };
+
+  const cleanTonic = (tonicName || 'C').trim().replace(/\d+/g, '');
+  let tonicLetter = 'C';
+  if (cleanTonic.startsWith('C') || cleanTonic.startsWith('c')) tonicLetter = 'C';
+  else if (cleanTonic.startsWith('D') || cleanTonic.startsWith('d')) tonicLetter = 'D';
+  else if (cleanTonic.startsWith('E') || cleanTonic.startsWith('e')) tonicLetter = 'E';
+  else if (cleanTonic.startsWith('F') || cleanTonic.startsWith('f')) tonicLetter = 'F';
+  else if (cleanTonic.startsWith('G') || cleanTonic.startsWith('g')) tonicLetter = 'G';
+  else if (cleanTonic.startsWith('A') || cleanTonic.startsWith('a')) tonicLetter = 'A';
+  else if (cleanTonic.startsWith('H') || cleanTonic.startsWith('h') || cleanTonic.startsWith('B') || cleanTonic.startsWith('b')) tonicLetter = 'H';
+
+  const tonicLetterIdx = LETTERS.indexOf(tonicLetter);
+  
+  const NOTE_LOOKUP_PITCHES: Record<string, number> = {
+    'C': 0, 'Cis': 1, 'Des': 1, 'C#': 1,
+    'D': 2, 'Dis': 3, 'Es': 3, 'D#': 3,
+    'E': 4,
+    'F': 5, 'Fis': 6, 'Ges': 6, 'F#': 6,
+    'G': 7, 'Gis': 8, 'As': 8, 'G#': 8,
+    'A': 9, 'Ais': 10, 'B': 10, 'H': 11, 'Ces': 11, 'His': 0
+  };
+  const tonicPC = NOTE_LOOKUP_PITCHES[cleanTonic] ?? 0;
+  const offset = (notePC - tonicPC + 12) % 12;
+
+  const majorMap: Record<number, { degree: number; alt: number }> = {
+    0: { degree: 1, alt: 0 },   // I
+    1: { degree: 2, alt: -1 },  // ♭II
+    2: { degree: 2, alt: 0 },   // II
+    3: { degree: 3, alt: -1 },  // ♭III
+    4: { degree: 3, alt: 0 },   // III
+    5: { degree: 4, alt: 0 },   // IV
+    6: { degree: 4, alt: 1 },   // ♯IV
+    7: { degree: 5, alt: 0 },   // V
+    8: { degree: 6, alt: -1 },  // ♭VI
+    9: { degree: 6, alt: 0 },   // VI
+    10: { degree: 7, alt: -1 }, // ♭VII
+    11: { degree: 7, alt: 0 }    // VII
+  };
+
+  const minorMap: Record<number, { degree: number; alt: number }> = {
+    0: { degree: 1, alt: 0 },   // I
+    1: { degree: 2, alt: -1 },  // ♭II (Neapolitan)
+    2: { degree: 2, alt: 0 },   // II
+    3: { degree: 3, alt: 0 },   // III
+    4: { degree: 3, alt: 1 },   // ♯III
+    5: { degree: 4, alt: 0 },   // IV
+    6: { degree: 4, alt: 1 },   // ♯IV
+    7: { degree: 5, alt: 0 },   // V
+    8: { degree: 6, alt: 0 },   // VI
+    9: { degree: 6, alt: 1 },   // ♯VI (dorian)
+    10: { degree: 7, alt: 0 },  // ♭VII (natural)
+    11: { degree: 7, alt: 1 }   // ♯VII (harmonic)
+  };
+
+  const map = isMinor ? minorMap : majorMap;
+  const { degree, alt } = map[offset] ?? { degree: 1, alt: 0 };
+
+  const targetLetterIdx = (tonicLetterIdx + degree - 1) % 7;
+  const targetLetter = LETTERS[targetLetterIdx];
+  const naturalPC = LETTER_NATURAL_PCS[targetLetter];
+
+  const diff = (notePC - naturalPC + 18) % 12 - 6;
+
+  if (diff === 0) return targetLetter;
+  if (diff === 1) return targetLetter + 'is';
+  if (diff === 2) return targetLetter + 'isis';
+  if (diff === -1) {
+    if (targetLetter === 'A') return 'As';
+    if (targetLetter === 'E') return 'Es';
+    if (targetLetter === 'H') return 'B';
+    return targetLetter + 'es';
+  }
+  if (diff === -2) {
+    if (targetLetter === 'H') return 'Heses';
+    return targetLetter + 'eses';
+  }
+  return targetLetter;
+}
+
+export function getDynamicVoiceDegreeText(
+  noteMidi: number,
+  tonicPitch: number,
+  isMinor: boolean,
+  tonicName: string
+): string {
+  const notePC = ((noteMidi % 12) + 12) % 12;
+  const degreePC = (notePC - (tonicPitch % 12) + 12) % 12;
+
+  const majorDegrees: Record<number, string> = {
+    0: 'I', 1: '♭II', 2: 'II', 3: '♭III', 4: 'III', 5: 'IV',
+    6: '♯IV', 7: 'V', 8: '♭VI', 9: 'VI', 10: '♭VII', 11: 'VII'
+  };
+
+  const minorDegrees: Record<number, string> = {
+    0: 'I', 1: '♭II', 2: 'II', 3: 'III', 4: '♯III', 5: 'IV',
+    6: '♯IV', 7: 'V', 8: 'VI', 9: '♯VI', 10: 'VII', 11: '♯VII'
+  };
+
+  const degreeSymbols = isMinor ? minorDegrees : majorDegrees;
+  const degSym = degreeSymbols[degreePC] ?? `${degreePC}`;
+  
+  const noteName = spellClassicalNoteName(noteMidi, tonicName, isMinor);
+  
+  const RU_NOTE_NAMES: Record<string, string> = {
+    'C': 'До', 'Cis': 'До-диез', 'Des': 'Ре-бемоль',
+    'D': 'Ре', 'Dis': 'Ре-диез', 'Es': 'Ми-бемоль',
+    'E': 'Ми', 'Eis': 'Ми-диез',
+    'F': 'Фа', 'Fis': 'Фа-диез', 'Ges': 'Соль-бемоль',
+    'G': 'Соль', 'Gis': 'Соль-диез', 'As': 'Ля-бемоль',
+    'A': 'Ля', 'Ais': 'Ля-диез', 'B': 'Си-бемоль',
+    'H': 'Си', 'His': 'Си-диез', 'Ces': 'До-бемоль'
+  };
+  
+  const ruName = RU_NOTE_NAMES[noteName] ?? noteName;
+  return `${degSym} (${ruName})`;
+}
+
 export function realizeProgression(
   templateId?: string,
   preferredTonic: string = 'C',
   preferredMode: 'major' | 'minor' | 'any' = 'major',
-  categoryFilter?: 'all' | ProgressionCategory
+  categoryFilter?: 'all' | ProgressionCategory | ProgressionCategory[]
 ): RealizedProgression {
-  // Resolve tonic pitch
   const NOTE_LOOKUP: Record<string, number> = {
     'c': 0, 'cis': 1, 'des': 1, 'c#': 1,
     'd': 2, 'dis': 3, 'es': 3, 'd#': 3,
@@ -1218,10 +330,13 @@ export function realizeProgression(
 
   const tonicNoteName = CHROMATIC_NOTES_UP[tonicPitch];
 
-  // Filter available templates
   let pool = CLASSICAL_PROGRESSIONS;
   if (categoryFilter && categoryFilter !== 'all') {
-    pool = pool.filter((p) => p.category === categoryFilter);
+    if (Array.isArray(categoryFilter)) {
+      pool = pool.filter((p) => categoryFilter.includes(p.category));
+    } else {
+      pool = pool.filter((p) => p.category === categoryFilter);
+    }
   }
 
   if (templateId) {
@@ -1244,38 +359,43 @@ export function realizeProgression(
     ? `${tonicNoteName}-dur (${tonicNoteName} мажор)`
     : `${tonicNoteName}-moll (${tonicNoteName} минор)`;
 
-  // Base tonic MIDI: anchor around C4 (60)
-  const baseTonicMidi = 60 + tonicPitch;
+  const origTonic = template.originalTonicPC ?? 0;
+  const shift = (tonicPitch - origTonic + 24) % 12;
 
   const realizedSteps = template.steps.map((s) => {
-    // For minor mode adjustments if template is 'both' and mode is 'minor':
     const isMinor = effectiveMode === 'minor';
     const satbMidis: [number, number, number, number] = [
-      baseTonicMidi + s.satbOffsets[0],
-      baseTonicMidi + s.satbOffsets[1],
-      baseTonicMidi + s.satbOffsets[2],
-      baseTonicMidi + s.satbOffsets[3],
+      60 + s.satbOffsets[0] + shift,
+      60 + s.satbOffsets[1] + shift,
+      60 + s.satbOffsets[2] + shift,
+      60 + s.satbOffsets[3] + shift,
     ];
 
-    // If both mode and in minor: adjust third offsets (semitones 4 -> 3)
     if (isMinor && template.scaleMode === 'both') {
       for (let i = 0; i < 4; i++) {
         const offset = s.satbOffsets[i];
         const pitchClass = (offset % 12 + 12) % 12;
-        if (pitchClass === 4) { // Major 3rd -> Minor 3rd
-          satbMidis[i] -= 1;
-        } else if (pitchClass === 9) { // Major 6th -> Minor 6th (in S6/4)
-          satbMidis[i] -= 1;
+        if (pitchClass === 4) {
+          satbMidis[i] -= 1; // Major 3rd -> Minor 3rd
+        } else if (pitchClass === 9) {
+          satbMidis[i] -= 1; // Major 6th -> Minor 6th
         }
       }
     }
 
     const noteNames: [string, string, string, string] = [
-      CHROMATIC_NOTES_UP[((satbMidis[0] % 12) + 12) % 12],
-      CHROMATIC_NOTES_UP[((satbMidis[1] % 12) + 12) % 12],
-      CHROMATIC_NOTES_UP[((satbMidis[2] % 12) + 12) % 12],
-      CHROMATIC_NOTES_UP[((satbMidis[3] % 12) + 12) % 12],
+      spellClassicalNoteName(satbMidis[0], tonicNoteName, isMinor),
+      spellClassicalNoteName(satbMidis[1], tonicNoteName, isMinor),
+      spellClassicalNoteName(satbMidis[2], tonicNoteName, isMinor),
+      spellClassicalNoteName(satbMidis[3], tonicNoteName, isMinor),
     ];
+
+    const dynamicVoiceDegreesRu = {
+      bass: getDynamicVoiceDegreeText(satbMidis[0], tonicPitch, isMinor, tonicNoteName),
+      tenor: getDynamicVoiceDegreeText(satbMidis[1], tonicPitch, isMinor, tonicNoteName),
+      alto: getDynamicVoiceDegreeText(satbMidis[2], tonicPitch, isMinor, tonicNoteName),
+      soprano: getDynamicVoiceDegreeText(satbMidis[3], tonicPitch, isMinor, tonicNoteName),
+    };
 
     const formattedSymbol = formatSymbolForMode(s.symbol, effectiveMode);
 
@@ -1285,7 +405,7 @@ export function realizeProgression(
       nameRu: s.nameRu,
       midisSATB: satbMidis,
       noteNamesSATB: noteNames,
-      voiceDegreesRu: s.voiceDegreesRu,
+      voiceDegreesRu: dynamicVoiceDegreesRu,
     };
   });
 
@@ -1301,4 +421,430 @@ export function realizeProgression(
     voiceLeadingValidation,
     steps: realizedSteps,
   };
+}
+
+export function getChordPitches(symbol: string, isMinor: boolean): { rootOffset: number; intervals: number[] } {
+  const s = symbol.trim();
+  const sLower = s.toLowerCase();
+  
+  let rootOffset = 0;
+  let intervals = [0, 4, 7]; // default major triad
+
+  if (sLower.includes('iv') || sLower.startsWith('s')) {
+    rootOffset = 5; // Subdominant (IV)
+    intervals = isMinor ? [0, 3, 7] : [0, 4, 7];
+  } else if (sLower.startsWith('ii') || sLower.includes('ii')) {
+    rootOffset = 2; // Supertonic (II)
+    intervals = isMinor ? [0, 3, 6] : [0, 3, 7]; // II is diminished in minor, minor in major
+    if (sLower.includes('7') || sLower.includes('6/5') || sLower.includes('4/3') || sLower.includes('2') || sLower.includes('65') || sLower.includes('43')) {
+      intervals = isMinor ? [0, 3, 6, 9] : [0, 3, 6, 10]; // II7
+    }
+  } else if (sLower.startsWith('vii') || sLower.includes('vii')) {
+    rootOffset = isMinor ? 10 : 11; // ♭VII in natural minor, VII in major
+    if (sLower.includes('vii#') || (sLower.includes('vii') && isMinor)) {
+      rootOffset = 11;
+    }
+    intervals = [0, 3, 6]; // VII is diminished
+    if (sLower.includes('7')) {
+      intervals = isMinor ? [0, 3, 6, 9] : [0, 3, 6, 10];
+    }
+  } else if (sLower.startsWith('v') || sLower.startsWith('d')) {
+    rootOffset = 7; // Dominant (V)
+    intervals = [0, 4, 7]; // Dominant is always major triad
+    if (sLower.includes('7') || sLower.includes('6/5') || sLower.includes('4/3') || sLower.includes('2') || sLower.includes('65') || sLower.includes('43')) {
+      intervals = [0, 4, 7, 10]; // Dominant 7th
+    }
+  } else if (sLower.startsWith('vi') || sLower.includes('vi')) {
+    rootOffset = isMinor ? 8 : 9; // VI (♭VI in minor, VI in major)
+    intervals = isMinor ? [0, 4, 7] : [0, 3, 7]; // VI is major in minor, minor in major
+  } else if (sLower.startsWith('iii') || sLower.includes('iii')) {
+    rootOffset = isMinor ? 3 : 4; // III (♭III in minor, III in major)
+    intervals = isMinor ? [0, 4, 7] : [0, 3, 7]; // III is major in minor, minor in major
+  } else if (sLower.startsWith('n6') || sLower.startsWith('n') || sLower.includes('bii') || sLower.includes('♭ii')) {
+    rootOffset = 1; // Neapolitan ♭II (Des)
+    intervals = [0, 4, 7]; // Neapolitan is a major triad
+  } else {
+    rootOffset = 0;
+    intervals = isMinor ? [0, 3, 7] : [0, 4, 7];
+  }
+
+  if (sLower.startsWith('n') || sLower.includes('neapol') || sLower.includes('♭ii') || sLower.includes('bii')) {
+    rootOffset = 1;
+    intervals = [0, 4, 7];
+  }
+
+  return { rootOffset, intervals };
+}
+
+export function revoiceProgression(
+  prog: RealizedProgression,
+  spacing: 'original' | 'close' | 'open' | 'random',
+  melodicPosition: 'original' | 'octave' | 'third' | 'fifth' | 'random'
+): RealizedProgression {
+  let effectiveSpacing = spacing;
+  if (spacing === 'random') {
+    const options: ('original' | 'close' | 'open')[] = ['original', 'close', 'open'];
+    effectiveSpacing = options[Math.floor(Math.random() * options.length)];
+  }
+
+  let effectiveMelodicPosition = melodicPosition;
+  if (melodicPosition === 'random') {
+    const options: ('original' | 'octave' | 'third' | 'fifth')[] = ['original', 'octave', 'third', 'fifth'];
+    effectiveMelodicPosition = options[Math.floor(Math.random() * options.length)];
+  }
+
+  if (effectiveSpacing === 'original' && effectiveMelodicPosition === 'original') {
+    return prog;
+  }
+
+  const stepsCount = prog.steps.length;
+  if (stepsCount === 0) return prog;
+
+  const isMinor = prog.scaleMode === 'minor';
+
+  // Step candidate generator
+  const stepCandidates: [number, number, number, number][][] = [];
+
+  for (let s = 0; s < stepsCount; s++) {
+    const orig = prog.steps[s].midisSATB;
+    const [B] = orig;
+    const pcs = new Set(orig.map((m) => ((m % 12) + 12) % 12));
+    const bMidi = B;
+    const bPC = ((bMidi % 12) + 12) % 12;
+
+    const candidates: [number, number, number, number][] = [];
+    const tenorMin = 48; // c
+    const tenorMax = 69; // a1
+    const altoMin = 55;  // g
+    const altoMax = 76;  // e2
+    const sopMin = 60;   // c1
+    const sopMax = 84;   // c3
+
+    const tOpts: number[] = [];
+    const aOpts: number[] = [];
+    const sOpts: number[] = [];
+
+    for (let m = tenorMin; m <= tenorMax; m++) if (pcs.has(m % 12)) tOpts.push(m);
+    for (let m = altoMin; m <= altoMax; m++) if (pcs.has(m % 12)) aOpts.push(m);
+    for (let m = sopMin; m <= sopMax; m++) if (pcs.has(m % 12)) sOpts.push(m);
+
+    for (const t of tOpts) {
+      if (t < bMidi) continue;
+      if (t - bMidi > 24) continue;
+      for (const a of aOpts) {
+        if (a < t) continue;
+        if (a - t > 12) continue;
+        for (const sop of sOpts) {
+          if (sop < a) continue;
+          if (sop - a > 12) continue;
+
+          const usedPcs = new Set([bMidi % 12, t % 12, a % 12, sop % 12]);
+          if (usedPcs.size < pcs.size) continue;
+
+          // Step 0 constraints
+          if (s === 0) {
+            if (effectiveSpacing === 'close' && (sop - a > 5 || a - t > 5)) continue;
+            if (effectiveSpacing === 'open' && (sop - a < 5 || a - t < 5)) continue;
+            if (effectiveMelodicPosition === 'octave' && sop % 12 !== bPC) continue;
+            if (
+              effectiveMelodicPosition === 'third' &&
+              sop % 12 !== (bPC + 4) % 12 &&
+              sop % 12 !== (bPC + 3) % 12
+            ) continue;
+            if (effectiveMelodicPosition === 'fifth' && sop % 12 !== (bPC + 7) % 12) continue;
+          }
+
+          candidates.push([bMidi, t, a, sop]);
+        }
+      }
+    }
+
+    if (candidates.length === 0) {
+      candidates.push(orig);
+    }
+    stepCandidates.push(candidates);
+  }
+
+  // Branch-and-bound search for smooth classical voice leading
+  let bestPath: [number, number, number, number][] | null = null;
+  let bestScore = Infinity;
+
+  function search(stepIdx: number, currentPath: [number, number, number, number][], currentScore: number) {
+    if (currentScore >= bestScore) return;
+
+    if (stepIdx === stepsCount) {
+      const fullRes = checkVoiceLeading(currentPath.map((m) => ({ midisSATB: m })));
+      if (fullRes.isValid && currentScore < bestScore) {
+        bestScore = currentScore;
+        bestPath = currentPath;
+      }
+      return;
+    }
+
+    const prev = currentPath[currentPath.length - 1];
+    const opts = stepCandidates[stepIdx];
+
+    const scoredOpts: { opt: [number, number, number, number]; score: number }[] = [];
+    for (const opt of opts) {
+      let score = 0;
+      if (prev) {
+        const transRes = checkVoiceLeading([
+          { midisSATB: prev },
+          { midisSATB: opt },
+        ]);
+        if (!transRes.isValid) continue;
+
+        const bassDir = Math.sign(opt[0] - prev[0]);
+        for (let v = 1; v <= 3; v++) {
+          const diff = Math.abs(opt[v] - prev[v]);
+          score += diff;
+          // Reward common tones
+          if (diff === 0) score -= 2;
+          // Penalize moving in same direction as bass
+          if (bassDir !== 0 && Math.sign(opt[v] - prev[v]) === bassDir) {
+            score += 4;
+          }
+        }
+      }
+      scoredOpts.push({ opt, score });
+    }
+
+    scoredOpts.sort((a, b) => a.score - b.score);
+
+    for (const { opt, score } of scoredOpts) {
+      search(stepIdx + 1, [...currentPath, opt], currentScore + score);
+      if (bestPath && bestScore <= 10) break; // Optimal voice-leading solution reached
+    }
+  }
+
+  search(0, [], 0);
+
+  // Fallback to original pristine textbook progression if no defect-free path exists
+  if (!bestPath) {
+    return prog;
+  }
+
+  const newSteps = prog.steps.map((origStep, idx) => {
+    const midisSATB = bestPath![idx];
+    const noteNames: [string, string, string, string] = [
+      spellClassicalNoteName(midisSATB[0], prog.tonicNoteName, isMinor),
+      spellClassicalNoteName(midisSATB[1], prog.tonicNoteName, isMinor),
+      spellClassicalNoteName(midisSATB[2], prog.tonicNoteName, isMinor),
+      spellClassicalNoteName(midisSATB[3], prog.tonicNoteName, isMinor),
+    ];
+    const dynamicVoiceDegreesRu = {
+      bass: getDynamicVoiceDegreeText(midisSATB[0], prog.tonicPitch, isMinor, prog.tonicNoteName),
+      tenor: getDynamicVoiceDegreeText(midisSATB[1], prog.tonicPitch, isMinor, prog.tonicNoteName),
+      alto: getDynamicVoiceDegreeText(midisSATB[2], prog.tonicPitch, isMinor, prog.tonicNoteName),
+      soprano: getDynamicVoiceDegreeText(midisSATB[3], prog.tonicPitch, isMinor, prog.tonicNoteName),
+    };
+    return {
+      ...origStep,
+      midisSATB,
+      noteNamesSATB: noteNames,
+      voiceDegreesRu: dynamicVoiceDegreesRu,
+    };
+  });
+
+  return {
+    ...prog,
+    steps: newSteps,
+    voiceLeadingValidation: checkVoiceLeading(newSteps),
+  };
+}
+
+export interface DatabaseConflict {
+  templateId: string;
+  progressionName: string;
+  category: string;
+  key: 'major' | 'minor';
+  type: string;
+  description: string;
+  severity: 'high' | 'warning';
+}
+
+export interface SeventhDetectionResult {
+  voiceIndex: number; // 0: Bass, 1: Tenor, 2: Alto, 3: Soprano
+  voiceName: 'Бас' | 'Тенор' | 'Альт' | 'Сопрано';
+  pitchMidi: number;
+  pitchClass: number;
+  isSeventhChord: boolean;
+  resolution?: {
+    nextVoiceMidi: number;
+    deltaSemitones: number;
+    direction: 'down' | 'up' | 'same';
+    arrowSymbol: '↓' | '↑' | '→' | '↘' | '↗';
+    isExpectedMovement: boolean;
+  };
+}
+
+export function identifyChordSeventh(
+  symbol: string,
+  midisSATB: [number, number, number, number],
+  nextMidisSATB?: [number, number, number, number]
+): SeventhDetectionResult | null {
+  const sym = symbol.toUpperCase();
+  const isSeventh = /7|6\/5|4\/3|(?<!6\/)2|65|43/.test(symbol);
+  if (!isSeventh) return null;
+
+  const pcs = midisSATB.map((m) => ((m % 12) + 12) % 12);
+  let rootPC: number | null = null;
+  if (sym.includes('♭II') || sym.includes('BII')) rootPC = 1;
+  else if (sym.includes('♭VI') || sym.includes('BVI')) rootPC = 8;
+  else if (sym.includes('VII')) rootPC = 11;
+  else if (sym.includes('D') || sym.includes('V')) rootPC = 7;
+  else if (sym.includes('II')) rootPC = 2;
+  else if (sym.includes('VI')) rootPC = 9;
+  else if (sym.includes('IV') || sym.includes('S')) rootPC = 5;
+  else if (sym.includes('I') || sym.includes('T')) rootPC = 0;
+
+  let voiceIdx = -1;
+  if (rootPC !== null) {
+    const targetPCs = [(rootPC + 10) % 12, (rootPC + 9) % 12, (rootPC + 11) % 12];
+    for (const t of targetPCs) {
+      const idx = pcs.findIndex((p) => p === t);
+      if (idx !== -1) {
+        voiceIdx = idx;
+        break;
+      }
+    }
+  }
+
+  if (voiceIdx === -1) {
+    for (let r = 0; r < 4; r++) {
+      for (let v = 0; v < 4; v++) {
+        if (r !== v) {
+          const interval = (pcs[v] - pcs[r] + 12) % 12;
+          if (interval === 10 || interval === 9) {
+            voiceIdx = v;
+            break;
+          }
+        }
+      }
+      if (voiceIdx !== -1) break;
+    }
+  }
+
+  if (voiceIdx === -1) return null;
+
+  const voiceNames: ('Бас' | 'Тенор' | 'Альт' | 'Сопрано')[] = ['Бас', 'Тенор', 'Альт', 'Сопрано'];
+  let resolution: SeventhDetectionResult['resolution'] = undefined;
+
+  if (nextMidisSATB) {
+    const currM = midisSATB[voiceIdx];
+    const nextM = nextMidisSATB[voiceIdx];
+    const delta = nextM - currM;
+    const direction = delta < 0 ? 'down' : delta > 0 ? 'up' : 'same';
+    const arrowSymbol = delta < 0 ? '↓' : delta > 0 ? '↑' : '→';
+    resolution = {
+      nextVoiceMidi: nextM,
+      deltaSemitones: delta,
+      direction,
+      arrowSymbol,
+      isExpectedMovement: delta <= 0 || sym.includes('4/3') || sym.includes('♭II') || sym.includes('♭VI'),
+    };
+  }
+
+  return {
+    voiceIndex: voiceIdx,
+    voiceName: voiceNames[voiceIdx],
+    pitchMidi: midisSATB[voiceIdx],
+    pitchClass: pcs[voiceIdx],
+    isSeventhChord: true,
+    resolution,
+  };
+}
+
+export function runDatabaseAudit(): DatabaseConflict[] {
+  const conflicts: DatabaseConflict[] = [];
+
+  for (const template of CLASSICAL_PROGRESSIONS) {
+    const modes: ('major' | 'minor')[] = [];
+    if (template.scaleMode === 'major' || template.scaleMode === 'both') modes.push('major');
+    if (template.scaleMode === 'minor' || template.scaleMode === 'both') modes.push('minor');
+
+    for (const mode of modes) {
+      const shift = 0; // standard C
+      const effectiveMode = mode;
+      
+      const steps = template.steps.map((s) => {
+        const isMinor = effectiveMode === 'minor';
+        const satbMidis: [number, number, number, number] = [
+          60 + s.satbOffsets[0] + shift,
+          60 + s.satbOffsets[1] + shift,
+          60 + s.satbOffsets[2] + shift,
+          60 + s.satbOffsets[3] + shift,
+        ];
+
+        if (isMinor && template.scaleMode === 'both') {
+          for (let i = 0; i < 4; i++) {
+            const offset = s.satbOffsets[i];
+            const pitchClass = (offset % 12 + 12) % 12;
+            if (pitchClass === 4) {
+              satbMidis[i] -= 1; // Major 3rd -> Minor 3rd
+            } else if (pitchClass === 9) {
+              satbMidis[i] -= 1; // Major 6th -> Minor 6th
+            }
+          }
+        }
+        return { midisSATB: satbMidis, symbol: s.symbol };
+      });
+
+      // 1. Voice leading checks
+      const vlResult = checkVoiceLeading(steps);
+      for (const warning of vlResult.warnings) {
+        let type = 'voice_crossing';
+        if (warning.includes('Все 4 голоса')) type = 'all_moving_same_direction';
+        else if (warning.includes('Пересечение голосов')) type = 'overlapping';
+        else if (warning.includes('Параллельные')) type = 'parallel_octaves_fifths';
+
+        conflicts.push({
+          templateId: template.id,
+          progressionName: template.nameRu,
+          category: template.categoryNameRu,
+          key: mode,
+          type,
+          description: warning,
+          severity: type === 'parallel_octaves_fifths' || type === 'voice_crossing' ? 'high' : 'warning'
+        });
+      }
+
+      // 2. Harmonic seventh voice leading checks
+      for (let s = 0; s < steps.length - 1; s++) {
+        const sym = steps[s].symbol.toUpperCase();
+        const nextStep = steps[s + 1];
+        const seventhInfo = identifyChordSeventh(sym, steps[s].midisSATB, nextStep.midisSATB);
+
+        if (seventhInfo && seventhInfo.resolution) {
+          const move = seventhInfo.resolution.deltaSemitones;
+
+          // Legitimate upward resolutions recognized by classical and modern theory:
+          // 1. Passing D4/3 in parallel tenths with bass (e.g. #28: C/E -> D/F -> E/G)
+          const isPassingTenths = (sym.includes('4/3') || template.category === 'passing') && move > 0;
+          // 2. Ellipsis (chords connecting directly to other dissonant chords without tonic resolution)
+          const isEllipsis = template.category === 'ellipsis';
+          // 3. Sequences (parallel descending/ascending secondary chords)
+          const isSequence = template.category === 'sequence';
+          // 4. Tritone substitutions and altered chords (where altered degrees resolve according to chromatic voice leading)
+          const isAlteredOrTritone = template.category === 'altered' || sym.includes('♭II') || sym.includes('BII') || sym.includes('♭VI') || sym.includes('BVI') || template.nameRu.includes('Тритон');
+          // 5. Connection between two seventh chords (e.g. II6/5 -> VII7)
+          const nextIsSeventh = /7|6\/5|4\/3|(?<!6\/)2/.test(nextStep.symbol);
+
+          if (move > 0 && !isPassingTenths && !isEllipsis && !isSequence && !isAlteredOrTritone && !nextIsSeventh) {
+            conflicts.push({
+              templateId: template.id,
+              progressionName: template.nameRu,
+              category: template.categoryNameRu,
+              key: mode,
+              type: 'unresolved_seventh',
+              description: `Шаг ${s + 1} (${steps[s].symbol}) -> Шаг ${s + 2} (${steps[s + 1].symbol}): Септима в голосе ${seventhInfo.voiceName} движется вверх (+${move} полут.).`,
+              severity: 'warning'
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return conflicts;
 }

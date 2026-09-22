@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useTransition } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   CategoryId,
   CurrentTask,
@@ -7,6 +8,7 @@ import {
   TrainingMode,
   AppStats,
 } from './types';
+import { getRandomQuote } from './data/quotes';
 import {
   ALL_ITEMS,
   NOTE_NAMES,
@@ -32,14 +34,33 @@ import { AnswerGrid } from './components/AnswerGrid';
 import { OralModeCard } from './components/OralModeCard';
 import { ConstructionModeCard } from './components/ConstructionModeCard';
 import { TonalModeCard } from './components/TonalModeCard';
+import { ScaleDegreeModeCard } from './components/ScaleDegreeModeCard';
 import { ProgressionModeCard } from './components/ProgressionModeCard';
+import { MelodyHarmonizationModeCard } from './components/MelodyHarmonizationModeCard';
+import { HarmonizationStudio } from './components/HarmonizationStudio';
+import { PitchCalibrationCard } from './components/PitchCalibrationCard';
+import {
+  MelodyHarmonizationTemplate,
+  buildSATBForChord,
+} from './audio/melodyHarmonization';
 import { PlaybackStyleDirectionBar } from './components/PlaybackStyleDirectionBar';
+import { MarathonProgressBar } from './components/MarathonProgressBar';
+import { CelebrationEffects } from './components/CelebrationEffects';
+import { useMarathon } from './hooks/useMarathon';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { CategorySelectorModal } from './components/CategorySelectorModal';
 import { StatsCounterWidget } from './components/StatsCounterWidget';
 import { StatsModal } from './components/StatsModal';
-import { generateSmartVoicingTask, SmartVoicingTask, getConstructionBreakdown } from './audio/solfegeHelper';
-import { getVoicingsForDegree } from './audio/tonalChords';
-import { realizeProgression, RealizedProgression, HarmonicProgressionTemplate } from './audio/harmonicProgressions';
+import {
+  generateSmartVoicingTask,
+  SmartVoicingTask,
+  getConstructionBreakdown,
+  generateScaleDegreeTask,
+  ScaleDegreeTask,
+} from './audio/solfegeHelper';
+import { pickWeightedItem } from './utils/spacedRepetition';
+import { getVoicingsForDegree, findVoicingById } from './audio/tonalChords';
+import { realizeProgression, RealizedProgression, HarmonicProgressionTemplate, revoiceProgression } from './audio/harmonicProgressions';
 import {
   Play,
   RotateCcw,
@@ -55,13 +76,29 @@ import {
   Music,
   Layers,
   GitBranch,
+  Target,
   BookOpen,
+  Flame,
+  Trophy,
+  ArrowUp,
+  ArrowDown,
+  AlertCircle,
 } from 'lucide-react';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { ProgressionCatalogModal } from './components/ProgressionCatalogModal';
+import { ChangelogModal, CURRENT_CHANGELOG_VERSION } from './components/ChangelogModal';
+import { AcademicAuditModal } from './components/AcademicAuditModal';
+import { useActionTracker } from './context/ActionTrackerContext.tsx';
+
+// Professional Anti-Slop responsive curve: ultra-responsive fast-out slow-in
+export const ANTI_SLOP_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 export default function App() {
   const [, startTransition] = useTransition();
+
+  // Stats persistence state & Auto-advance ref
+  const [stats, setStats] = useState<AppStats>(DEFAULT_STATS);
+  const autoAdvanceTimerRef = useRef<number | null>(null);
 
   // App Settings & Modes
   const [settings, setSettings] = useState<PlaybackSettings>(DEFAULT_SETTINGS);
@@ -69,8 +106,35 @@ export default function App() {
   const [activeItemIds, setActiveItemIds] = useState<string[]>(() => ALL_ITEMS.map((i) => i.id));
   const [mode, setMode] = useState<TrainingMode>('oral');
 
+  const { currentSection, setCurrentSection, logAction } = useActionTracker();
+
+  // Synchronize TrainingMode changes into ActionTracker
+  useEffect(() => {
+    setCurrentSection(mode);
+  }, [mode, setCurrentSection]);
+
+  // Marathon Gamification & Celebration Engine
+  const {
+    marathonStreak,
+    marathonBestStreak,
+    isNewRecord,
+    celebrationState,
+    handleCorrectMarathonAnswer,
+    handleWrongMarathonAnswer,
+    handleResetMarathon: resetMarathonState,
+    closeCelebration,
+  } = useMarathon(useCallback((st) => audioEngine.playCelebrationFanfare(st), []));
+
+  // Emotional Design: Empathetic A/B Comparison state on mistake
+  const [lastWrongAnswer, setLastWrongAnswer] = useState<{
+    chosenItem: MusicItem;
+    targetItem: MusicItem;
+    rootMidi: number;
+  } | null>(null);
+
   // Task & Audio State
   const [currentTask, setCurrentTask] = useState<CurrentTask | null>(null);
+  const [constructionStepCount, setConstructionStepCount] = useState<number>(1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{
     text: string;
@@ -85,10 +149,249 @@ export default function App() {
   const [tonalTiming, setTonalTiming] = useState<number>(-0.5);
   const [tonalActiveMidis, setTonalActiveMidis] = useState<number[]>([]);
 
+  // Scale Degree Mode State
+  const [degreeTask, setDegreeTask] = useState<ScaleDegreeTask | null>(null);
+  const [isDroneActive, setIsDroneActive] = useState(false);
+  const [degreeMarathonStreak, setDegreeMarathonStreak] = useState<number>(0);
+  const [degreeMarathonBestStreak, setDegreeMarathonBestStreak] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('solfege_degree_marathon_best');
+      return saved ? Number(saved) : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [degreeIsTwoNotes, setDegreeIsTwoNotes] = useState<boolean>(false);
+
   // Progression Mode State
   const [progressionTask, setProgressionTask] = useState<RealizedProgression | null>(null);
   const [progressionActiveStepIndex, setProgressionActiveStepIndex] = useState<number>(-1);
   const [progressionActiveMidis, setProgressionActiveMidis] = useState<number[]>([]);
+
+  // Scale Degree Handlers
+  const handleNewDegreeTask = useCallback(
+    (forceCadence = false) => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+        autoAdvanceTimerRef.current = null;
+      }
+      audioEngine.stopAll();
+      const task = generateScaleDegreeTask(
+        settings.tonalRootNote ?? 'C',
+        settings.tonalScaleMode ?? 'major',
+        settings.degreeType ?? 'diatonic',
+        stats,
+        settings.spacedRepetitionEnabled ?? true,
+        degreeIsTwoNotes
+      );
+      setDegreeTask(task);
+      setIsPlaying(true);
+      setStatusMessage({
+        text: `Слушайте: ступень в тональности ${task.keyNameRu}...`,
+        type: 'playing',
+      });
+
+      const now = audioEngine.getContext().currentTime + 0.05;
+
+      // Check if tuning cadence should be played before task note (e.g. when forced on key change or cadence enabled)
+      const playCadence = forceCadence || settings.cadenceBeforeTask === true;
+      if (playCadence) {
+        // Play tonic cadence / chord first, then task note
+        handlePlayKeyCadence(task.tonicNoteName, task.keyScaleMode);
+        window.setTimeout(() => {
+          const noteNow = audioEngine.getContext().currentTime + 0.05;
+          audioEngine.playSingleNote(task.targetMidi, noteNow, 1.4, 1.25, settings);
+          window.setTimeout(() => setIsPlaying(false), 1400);
+        }, 1200);
+      } else {
+        audioEngine.playSingleNote(task.targetMidi, now, 1.5, 1.25, settings);
+        window.setTimeout(() => setIsPlaying(false), 1500);
+      }
+    },
+    [settings, stats]
+  );
+
+  const handlePlayDegreeTaskNote = useCallback(() => {
+    if (!degreeTask) return;
+    audioEngine.stopAll();
+    setIsPlaying(true);
+    const now = audioEngine.getContext().currentTime + 0.05;
+    if (degreeTask.isTwoNotes && degreeTask.secondTargetMidi) {
+      audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 1.5, 1.25, settings);
+    } else {
+      audioEngine.playSingleNote(degreeTask.targetMidi, now, 1.5, 1.25, settings);
+    }
+    window.setTimeout(() => setIsPlaying(false), 1500);
+  }, [degreeTask, settings]);
+
+  const handlePlayDegreeResolution = useCallback(() => {
+    if (!degreeTask) return 0;
+    setIsPlaying(true);
+
+    const fullPath =
+      degreeTask.resolutionPathMidis && degreeTask.resolutionPathMidis.length > 0
+        ? degreeTask.resolutionPathMidis
+        : [degreeTask.targetMidi, degreeTask.resolutionMidi];
+
+    // Do NOT repeat the target note (fullPath[0])
+    const steps = fullPath.slice(1);
+    if (steps.length === 0) return 0.5;
+
+    const now = audioEngine.getContext().currentTime + 0.05;
+    const stepDuration = 0.30;
+
+    steps.forEach((midi, idx) => {
+      const isLast = idx === steps.length - 1;
+      const startTime = now + idx * stepDuration;
+      // Legato overlap: duration is longer than stepDuration (0.55s vs 0.30s)
+      const duration = isLast ? 0.9 : 0.55;
+      const velocity = isLast ? 1.25 : 1.1;
+      audioEngine.playSingleNote(midi, startTime, duration, velocity, settings);
+    });
+
+    const totalDurationSec = steps.length * stepDuration + 0.8;
+    window.setTimeout(() => setIsPlaying(false), totalDurationSec * 1000);
+    return totalDurationSec;
+  }, [degreeTask, settings]);
+
+  const handleSelectDegreeAnswer = useCallback(
+    (selectedDegreeId: string) => {
+      if (!degreeTask || degreeTask.revealed) return;
+
+      const isTwoNotes = degreeTask.isTwoNotes && degreeTask.secondDegreeId;
+      const targetIds = isTwoNotes ? [degreeTask.id, degreeTask.secondDegreeId!] : [degreeTask.id];
+      const currentGuessed = degreeTask.userAnswerIds || [];
+
+      // Check if selected degree is one of the target degrees
+      if (targetIds.includes(selectedDegreeId)) {
+        if (currentGuessed.includes(selectedDegreeId)) return; // already guessed this one
+
+        const updatedGuessed = [...currentGuessed, selectedDegreeId];
+        const allGuessed = targetIds.every((id) => updatedGuessed.includes(id));
+
+        if (allGuessed) {
+          const alreadyHadIncorrects = (degreeTask.incorrectAnswers && degreeTask.incorrectAnswers.length > 0);
+
+          setDegreeTask((prev) =>
+            prev ? { ...prev, revealed: true, userAnswerIds: updatedGuessed, userAnswerId: selectedDegreeId, isCorrect: !alreadyHadIncorrects } : null
+          );
+
+          setStats((prev) => {
+            const itemStat = prev.items[degreeTask.id] || { tested: 0, correct: 0 };
+            const updatedItems = {
+              ...prev.items,
+              [degreeTask.id]: {
+                tested: itemStat.tested + 1,
+                correct: itemStat.correct + (alreadyHadIncorrects ? 0 : 1),
+                lastTested: Date.now(),
+              },
+            };
+            const updatedStats = {
+              totalTested: prev.totalTested + 1,
+              totalCorrect: prev.totalCorrect + (alreadyHadIncorrects ? 0 : 1),
+              items: updatedItems,
+            };
+            saveStats(updatedStats);
+            return updatedStats;
+          });
+
+          setStatusMessage({
+            text: 'Верно! Это ' + degreeTask.degreeNameRu + (degreeTask.secondDegreeNameRu ? ` и ${degreeTask.secondDegreeNameRu}` : ''),
+            type: 'correct',
+          });
+
+          const shouldResolve = settings.degreeAutoResolve !== false;
+
+          if (shouldResolve) {
+            audioEngine.stopAll();
+            setIsPlaying(true);
+            const now = audioEngine.getContext().currentTime + 0.05;
+            if (degreeTask.secondTargetMidi && degreeTask.secondTargetMidi) {
+              audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 0.75, 1.25, settings);
+            } else {
+              audioEngine.playSingleNote(degreeTask.targetMidi, now, 0.75, 1.25, settings);
+            }
+
+            window.setTimeout(() => {
+              const resSec = handlePlayDegreeResolution();
+              if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+              autoAdvanceTimerRef.current = window.setTimeout(() => {
+                handleNewDegreeTask();
+              }, Math.max(800, resSec * 1000 + 400));
+            }, 750);
+          } else {
+            handlePlayDegreeTaskNote();
+            if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+            autoAdvanceTimerRef.current = window.setTimeout(() => {
+              handleNewDegreeTask();
+            }, 1800);
+          }
+        } else {
+          // First note of 2-note mode guessed correctly
+          setDegreeTask((prev) => (prev ? { ...prev, userAnswerIds: updatedGuessed } : null));
+          setStatusMessage({ text: 'Первый звук угадан! Найдите второй звук.', type: 'correct' });
+
+          const semitoneFromId: Record<string, number> = {
+            'deg_I': 0, 'deg_bII': 1, 'deg_II': 2, 'deg_bIII': 3, 'deg_III': 4,
+            'deg_IV': 5, 'deg_bV': 6, 'deg_V': 7, 'deg_bVI': 8, 'deg_VI': 9,
+            'deg_bVII': 10, 'deg_VII': 11,
+          };
+          const offset = semitoneFromId[selectedDegreeId];
+          if (offset !== undefined) {
+            const guessedMidi = degreeTask.tonicMidi + offset;
+            audioEngine.stopAll();
+            setIsPlaying(true);
+            const now = audioEngine.getContext().currentTime + 0.05;
+            audioEngine.playSingleNote(guessedMidi, now, 0.7, 1.1, settings);
+            window.setTimeout(() => setIsPlaying(false), 700);
+          }
+        }
+      } else {
+        // Wrong answer
+        setDegreeTask((prev) => {
+          if (!prev) return null;
+          const currentIncorrects = prev.incorrectAnswers || [];
+          if (currentIncorrects.includes(selectedDegreeId)) return prev;
+          return {
+            ...prev,
+            incorrectAnswers: [...currentIncorrects, selectedDegreeId],
+          };
+        });
+
+        const semitoneFromId: Record<string, number> = {
+          'deg_I': 0, 'deg_bII': 1, 'deg_II': 2, 'deg_bIII': 3, 'deg_III': 4,
+          'deg_IV': 5, 'deg_bV': 6, 'deg_V': 7, 'deg_bVI': 8, 'deg_VI': 9,
+          'deg_bVII': 10, 'deg_VII': 11,
+        };
+
+        const offset = semitoneFromId[selectedDegreeId];
+        if (offset !== undefined) {
+          const guessedMidi = degreeTask.tonicMidi + offset;
+          audioEngine.stopAll();
+          setIsPlaying(true);
+          const now = audioEngine.getContext().currentTime + 0.05;
+          audioEngine.playSingleNote(guessedMidi, now, 0.7, 1.1, settings);
+          window.setTimeout(() => setIsPlaying(false), 700);
+        }
+
+        setStatusMessage({
+          text: 'Неверно! Попробуйте другую ступень.',
+          type: 'wrong',
+        });
+      }
+    },
+    [degreeTask, settings, handleNewDegreeTask, handlePlayDegreeResolution, handlePlayDegreeTaskNote]
+  );
+
+  const handleToggleDrone = useCallback(() => {
+    if (isDroneActive) {
+      audioEngine.stopDrone();
+      setIsDroneActive(false);
+    } else if (degreeTask) {
+      audioEngine.startContinuousDrone(degreeTask.tonicMidi, settings.volume);
+      setIsDroneActive(true);
+    }
+  }, [isDroneActive, degreeTask, settings]);
 
   // Collapsible Left Drawer State
   const [isLeftDrawerOpen, setIsLeftDrawerOpen] = useState(false);
@@ -96,12 +399,17 @@ export default function App() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isProgressionCatalogOpen, setIsProgressionCatalogOpen] = useState(false);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+  const [isAcademicAuditOpen, setIsAcademicAuditOpen] = useState(false);
 
-  // Stats persistence state
-  const [stats, setStats] = useState<AppStats>(DEFAULT_STATS);
-
-  // Auto-advance timer ref
-  const autoAdvanceTimerRef = useRef<number | null>(null);
+  const handleCloseChangelog = useCallback(() => {
+    setIsChangelogOpen(false);
+    try {
+      localStorage.setItem('harmony_changelog_seen_version', CURRENT_CHANGELOG_VERSION);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
   // Audio sample loading state
   const [sampleStatus, setSampleStatus] = useState(audioEngine.getSampleStatus());
@@ -123,17 +431,26 @@ export default function App() {
       startTransition(() => {
         setSettings(savedState.settings);
         setActiveCategories(savedState.activeCategories);
-        setActiveItemIds(savedState.activeItemIds);
+        const loadedItemIds = [...savedState.activeItemIds];
+        if (
+          savedState.activeCategories.includes('d7_inversions') &&
+          !loadedItemIds.includes('d7')
+        ) {
+          loadedItemIds.push('d7');
+        }
+        setActiveItemIds(loadedItemIds);
         setMode(savedState.mode);
         setStats(savedStats);
       });
-      // Preload Salamander samples by default
+      // Preload Salamander samples by default (deferred to avoid blocking initial render)
       if (savedState.settings.timbre === 'salamander') {
-        audioEngine.preloadSalamander((progress) => {
-          setSampleStatus({ isLoaded: false, isLoading: true, progress });
-        }).then((ok) => {
-          setSampleStatus({ isLoaded: ok, isLoading: false, progress: ok ? 100 : 0 });
-        });
+        window.setTimeout(() => {
+          audioEngine.preloadSalamander((progress) => {
+            setSampleStatus({ isLoaded: false, isLoading: true, progress });
+          }).then((ok) => {
+            setSampleStatus({ isLoaded: ok, isLoading: false, progress: ok ? 100 : 0 });
+          });
+        }, 300);
       }
     }
     init();
@@ -142,6 +459,18 @@ export default function App() {
       if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
       audioEngine.stopAll();
     };
+  }, []);
+
+  // 1b. Automatically show the latest academic and visual corrections on first entry
+  useEffect(() => {
+    try {
+      const seenVersion = localStorage.getItem('harmony_changelog_seen_version');
+      if (seenVersion !== CURRENT_CHANGELOG_VERSION) {
+        setIsChangelogOpen(true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
 
   // 2. Persist Settings to IndexedDB
@@ -279,7 +608,10 @@ export default function App() {
       settings.tonalChordFilter ?? 'diatonic',
       settings.tonalScaleMode ?? 'major',
       settings.tonalRootPositionOnly ?? false,
-      settings.tonalAllowedDegrees
+      settings.tonalAllowedDegrees,
+      settings.tonalAllowedVoicings,
+      stats,
+      settings.spacedRepetitionEnabled ?? true
     );
     setTonalTask(task);
     setIsPlaying(true);
@@ -297,7 +629,7 @@ export default function App() {
         if (midis.length === 0) setIsPlaying(false);
       }
     );
-  }, [settings, tonalTiming]);
+  }, [settings, tonalTiming, stats]);
 
   const handleReplayTonalAll = useCallback((overrideStyle?: 'harmonic' | 'arpeggio') => {
     if (!tonalTask) return;
@@ -333,13 +665,19 @@ export default function App() {
     }, 1300);
   }, [tonalTask, settings]);
 
-  const handlePlayTonalChordOnly = useCallback(() => {
+  const handlePlayTonalChordOnly = useCallback((overrideStyle?: 'harmonic' | 'arpeggio') => {
     if (!tonalTask) return;
+    audioEngine.stopAll();
     setIsPlaying(true);
+    setStatusMessage({
+      text: `Повтор созвучия (${overrideStyle === 'arpeggio' ? 'арпеджио' : 'гармонически'})...`,
+      type: 'playing',
+    });
+    const effectiveSettings = overrideStyle ? { ...settings, style: overrideStyle } : settings;
     audioEngine.playTonalChordOnly(
       tonalTask.chordNotesMidi,
       tonalTask.baseMidi,
-      settings,
+      effectiveSettings,
       (midis) => setTonalActiveMidis(midis),
       () => setIsPlaying(false)
     );
@@ -349,7 +687,7 @@ export default function App() {
     setTonalTask((prev) => (prev ? { ...prev, revealed: true } : null));
   }, []);
 
-  const handlePreviewTonalDegree = useCallback((degreeId: string) => {
+  const handlePreviewTonalDegree = useCallback((degreeId: string, voicingId?: string) => {
     if (!tonalTask) return;
     audioEngine.stopAll();
     setIsPlaying(true);
@@ -359,10 +697,15 @@ export default function App() {
     const voicings = getVoicingsForDegree(degreeId, isMaj, tonicName);
     if (!voicings || voicings.length === 0) return;
 
-    // Pick root position if settings.tonalRootPositionOnly or first voicing
-    const targetVoicing = settings.tonalRootPositionOnly
-      ? (voicings.find((v) => v.isRootPosition) ?? voicings[0])
-      : voicings[0];
+    let targetVoicing = voicingId
+      ? (voicings.find((v) => v.id === voicingId) || findVoicingById(voicingId, isMaj, tonicName))
+      : undefined;
+
+    if (!targetVoicing) {
+      targetVoicing = settings.tonalRootPositionOnly
+        ? (voicings.find((v) => v.isRootPosition) ?? voicings[0])
+        : voicings[0];
+    }
 
     const tonicPitch = ((tonalTask.baseMidi % 12) + 12) % 12;
     // Calculate target average tessitura from the original played task chord
@@ -436,18 +779,23 @@ export default function App() {
       undefined,
       settings.progressionRootNote ?? settings.tonalRootNote ?? 'C',
       settings.tonalScaleMode ?? 'major',
-      settings.progressionCategory ?? 'all'
+      settings.progressionCategories ?? 'all'
     );
-    setProgressionTask(task);
+    const revoiced = revoiceProgression(
+      task,
+      settings.progressionSpacing ?? 'original',
+      settings.progressionMelodicPosition ?? 'original'
+    );
+    setProgressionTask(revoiced);
     setProgressionActiveStepIndex(-1);
     setProgressionActiveMidis([]);
     setIsPlaying(true);
     setStatusMessage({
-      text: `Слушайте: оборот в тональности ${task.keyNameRu}...`,
+      text: `Слушайте: оборот в тональности ${revoiced.keyNameRu}...`,
       type: 'playing',
     });
     audioEngine.playProgressionTask(
-      task,
+      revoiced,
       settings,
       (stepIdx, midis) => {
         setProgressionActiveStepIndex(stepIdx);
@@ -460,6 +808,63 @@ export default function App() {
       }
     );
   }, [settings]);
+
+  const handlePlayHarmonizationMelodyOnly = useCallback(
+    (template: MelodyHarmonizationTemplate) => {
+      audioEngine.stopAll();
+      setIsPlaying(true);
+      const notes = template.sopranoMelody.map((s) => s.midi);
+      audioEngine.playMidiSequence(notes, 0.55 / settings.tempo, settings, () => {
+        setIsPlaying(false);
+      });
+    },
+    [settings]
+  );
+
+  const handlePlayHarmonizationSATB = useCallback(
+    (template: MelodyHarmonizationTemplate, chordSequence: string[]) => {
+      audioEngine.stopAll();
+      setIsPlaying(true);
+
+      const stepsData: [number, number, number, number][] = template.sopranoMelody.map((s, idx) => {
+        const chordId = chordSequence[idx] || s.allowedChordIds[0];
+        return buildSATBForChord(s.midi, chordId, template.keyRootNote, template.scaleMode);
+      });
+
+      let currentStep = 0;
+      const playStepSeq = () => {
+        if (currentStep >= stepsData.length) {
+          setIsPlaying(false);
+          return;
+        }
+        const satb = stepsData[currentStep];
+        audioEngine.playProgressionStep(satb, settings, () => {
+          currentStep++;
+          setTimeout(playStepSeq, 100);
+        });
+      };
+
+      playStepSeq();
+    },
+    [settings]
+  );
+
+  const handlePlayStepSATB = useCallback(
+    (
+      sopranoMidi: number,
+      chordId: string,
+      keyRoot: string,
+      scaleMode: 'major' | 'minor'
+    ) => {
+      audioEngine.stopAll();
+      setIsPlaying(true);
+      const satb = buildSATBForChord(sopranoMidi, chordId, keyRoot, scaleMode);
+      audioEngine.playProgressionStep(satb, settings, () => {
+        setIsPlaying(false);
+      });
+    },
+    [settings]
+  );
 
   const handleProgressionReveal = useCallback(() => {
     setProgressionTask((prev) => (prev ? { ...prev, revealed: true } : null));
@@ -556,7 +961,12 @@ export default function App() {
       const key = settings.progressionRootNote ?? settings.tonalRootNote ?? 'C';
       const targetMode = template.scaleMode === 'minor' ? 'minor' : 'major';
       const realized = realizeProgression(template.id, key === 'random' ? 'C' : key, targetMode);
-      setProgressionTask(realized);
+      const revoiced = revoiceProgression(
+        realized,
+        settings.progressionSpacing ?? 'original',
+        settings.progressionMelodicPosition ?? 'original'
+      );
+      setProgressionTask(revoiced);
       setMode('progression');
       setStatusMessage({
         text: `Оборот: ${template.nameRu}`,
@@ -565,7 +975,7 @@ export default function App() {
       // Immediately play the chosen progression
       setIsPlaying(true);
       audioEngine.playProgressionTask(
-        realized,
+        revoiced,
         settings,
         (stepIdx: number, midis: number[]) => {
           setProgressionActiveStepIndex(stepIdx);
@@ -592,6 +1002,11 @@ export default function App() {
     // Immediately cut off any previous audio
     audioEngine.stopAll();
 
+    if (mode === 'degree') {
+      handleNewDegreeTask();
+      return;
+    }
+
     if (mode === 'tonal') {
       handleNewTonalTask();
       return;
@@ -611,7 +1026,12 @@ export default function App() {
       return;
     }
 
-    const randomItem = pool[Math.floor(Math.random() * pool.length)];
+    const randomItem = pickWeightedItem(
+      pool,
+      (i) => i.id,
+      stats,
+      settings.spacedRepetitionEnabled ?? true
+    );
 
     // Determine direction deterministically for this task
     let taskDirection: 'up' | 'down' = 'up';
@@ -666,8 +1086,17 @@ export default function App() {
     };
 
     setCurrentTask(newTask);
+    setLastWrongAnswer(null);
+
+    if (mode === 'marathon') {
+      setStatusMessage({
+        text: getRandomQuote(),
+        type: 'idle',
+      });
+    }
 
     if (mode === 'construction') {
+      setConstructionStepCount(1);
       // Play only root reference tone
       setIsPlaying(true);
       const isChainActive = isChainMode && currentTask !== null;
@@ -700,8 +1129,13 @@ export default function App() {
 
     const effectiveSettings = overrideStyle ? { ...settings, style: overrideStyle } : settings;
 
+    if (mode === 'degree') {
+      handlePlayDegreeTaskNote();
+      return;
+    }
+
     if (mode === 'tonal') {
-      handleReplayTonalAll(overrideStyle);
+      handlePlayTonalChordOnly(overrideStyle);
       return;
     }
 
@@ -713,29 +1147,48 @@ export default function App() {
     if (!currentTask) return;
 
     if (mode === 'construction') {
-      if (currentTask.revealed) {
+      const direction = currentTask.constructionDirection || 'up';
+      const breakdown = getConstructionBreakdown(
+        currentTask.item,
+        currentTask.rootMidi,
+        direction,
+        currentTask.rootNoteName
+      );
+      const count = currentTask.revealed
+        ? breakdown.notesMidi.length
+        : Math.max(1, constructionStepCount);
+      const notesToPlay = breakdown.notesMidi.slice(0, count);
+      const style = overrideStyle || settings.style || 'arpeggio';
+
+      if (style === 'harmonic') {
         setIsPlaying(true);
-        setStatusMessage({ text: 'Воспроизведение построенного...', type: 'playing' });
-        audioEngine.playItem(
-          currentTask.item,
-          currentTask.rootMidi,
-          effectiveSettings,
-          (midis) => {
-            if (midis.length === 0) setIsPlaying(false);
-          },
-          currentTask.constructionDirection || currentTask.playedDirection
-        );
+        setStatusMessage({
+          text: `Гармонически: тоны 1..${notesToPlay.length} из ${breakdown.notesMidi.length}`,
+          type: 'playing',
+        });
+        const now = audioEngine.getContext().currentTime + 0.05;
+        const noteDur = 1.2;
+        notesToPlay.forEach((midi) => {
+          audioEngine.playSingleNote(midi, now, noteDur, 1.0, settings);
+        });
+        window.setTimeout(() => setIsPlaying(false), 1200);
       } else {
         setIsPlaying(true);
-        setStatusMessage({ text: `Опорный звук: ${currentTask.rootNoteName}`, type: 'playing' });
-        audioEngine.playRootOnly(
-          currentTask.rootMidi,
-          effectiveSettings,
-          (midis) => {
-            if (midis.length === 0) setIsPlaying(false);
-          }
-        );
+        setStatusMessage({
+          text: `Арпеджио: тоны 1..${notesToPlay.length} из ${breakdown.notesMidi.length}`,
+          type: 'playing',
+        });
+        const now = audioEngine.getContext().currentTime + 0.05;
+        const stepTime = 0.35 / settings.tempo;
+        const noteDur = 0.8;
+        notesToPlay.forEach((midi, idx) => {
+          const isLast = idx === notesToPlay.length - 1;
+          audioEngine.playSingleNote(midi, now + idx * stepTime, noteDur, 1.2, settings, true, isLast);
+        });
+        const totalTime = notesToPlay.length * stepTime + 0.8;
+        window.setTimeout(() => setIsPlaying(false), totalTime * 1000);
       }
+      return;
     } else {
       // Oral and standard modes:
       // If user selected up/down in settings, immediately reflect it in oral mode
@@ -770,7 +1223,7 @@ export default function App() {
         mode === 'oral' && targetDir === 'down'
       );
     }
-  }, [currentTask, mode, settings, handleReplayTonalAll, handleReplayProgressionTask]);
+  }, [currentTask, mode, settings, constructionStepCount, handlePlayTonalChordOnly, handleReplayTonalAll, handleReplayProgressionTask]);
 
   // Audio Comparison handler: plays a specific item from the same root tone and direction
   const handlePlayComparison = useCallback(
@@ -815,7 +1268,27 @@ export default function App() {
   }, [currentTask, settings]);
 
   const handleUpdateSettings = useCallback((newSettings: Partial<PlaybackSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
+    setSettings((prev) => {
+      const updated = { ...prev, ...newSettings };
+      
+      if ('progressionSpacing' in newSettings || 'progressionMelodicPosition' in newSettings) {
+        setProgressionTask((prevProg) => {
+          if (!prevProg) return null;
+          const restoredTask = realizeProgression(
+            prevProg.template.id,
+            prevProg.tonicNoteName,
+            prevProg.scaleMode
+          );
+          return revoiceProgression(
+            restoredTask,
+            updated.progressionSpacing ?? 'original',
+            updated.progressionMelodicPosition ?? 'original'
+          );
+        });
+      }
+      
+      return updated;
+    });
     if (newSettings.direction && (newSettings.direction === 'up' || newSettings.direction === 'down')) {
       if (mode === 'oral') {
         setCurrentTask((prev) => (prev ? { ...prev, playedDirection: newSettings.direction as 'up' | 'down' } : null));
@@ -827,10 +1300,18 @@ export default function App() {
     if (!currentTask) return;
     audioEngine.stopAll();
     audioEngine.stopDrone();
+    const direction = currentTask.constructionDirection || 'up';
+    const breakdown = getConstructionBreakdown(
+      currentTask.item,
+      currentTask.rootMidi,
+      direction,
+      currentTask.rootNoteName
+    );
+    setConstructionStepCount(breakdown.noteNames.length);
     setCurrentTask((prev) => (prev ? { ...prev, revealed: true } : null));
     setIsPlaying(true);
     setStatusMessage({
-      text: `Ответ: «${currentTask.item.name}» ${currentTask.constructionDirection === 'down' ? 'вниз' : 'вверх'} от ${currentTask.rootNoteName}`,
+      text: `Ответ: «${currentTask.item.name}» ${direction === 'down' ? 'вниз' : 'вверх'} от ${currentTask.rootNoteName}`,
       type: 'idle',
     });
     audioEngine.playItem(
@@ -844,6 +1325,46 @@ export default function App() {
     );
   }, [currentTask, settings]);
 
+  const handleConstructionStepNext = useCallback(() => {
+    if (!currentTask || !currentTask.item) return;
+    audioEngine.stopAll();
+    audioEngine.stopDrone();
+
+    const direction = currentTask.constructionDirection || 'up';
+    const breakdown = getConstructionBreakdown(
+      currentTask.item,
+      currentTask.rootMidi,
+      direction,
+      currentTask.rootNoteName
+    );
+    const totalNotes = breakdown.notesMidi.length;
+    if (totalNotes === 0) return;
+
+    const nextStep = Math.min(totalNotes, constructionStepCount + 1);
+    setConstructionStepCount(nextStep);
+
+    const isFull = nextStep >= totalNotes;
+    if (isFull && !currentTask.revealed) {
+      setCurrentTask((prev) => (prev ? { ...prev, revealed: true } : null));
+    }
+
+    const newMidi = breakdown.notesMidi[nextStep - 1];
+    const newNoteName = breakdown.noteNames[nextStep - 1] || '';
+
+    setIsPlaying(true);
+    setStatusMessage({
+      text: `Добавлен тон ${nextStep} из ${totalNotes}: «${newNoteName}»`,
+      type: 'playing',
+    });
+
+    const now = audioEngine.getContext().currentTime + 0.05;
+    const noteDur = 0.8;
+
+    audioEngine.playSingleNote(newMidi, now, noteDur, 1.2, settings);
+
+    window.setTimeout(() => setIsPlaying(false), noteDur * 1000);
+  }, [currentTask, constructionStepCount, settings]);
+
   // Helper to record an answer in statistics and persist immediately to IndexedDB/localStorage
   const recordAnswer = useCallback((itemId: string, isCorrect: boolean) => {
     setStats((prev) => {
@@ -856,6 +1377,7 @@ export default function App() {
           [itemId]: {
             tested: existingItem.tested + 1,
             correct: existingItem.correct + (isCorrect ? 1 : 0),
+            lastTested: Date.now(),
           },
         },
       };
@@ -864,17 +1386,41 @@ export default function App() {
     });
   }, []);
 
+  const handlePracticeStruggling = useCallback((strugglingIds: string[]) => {
+    if (strugglingIds.length === 0) return;
+    setActiveItemIds(strugglingIds);
+    const cats = Array.from(
+      new Set(ALL_ITEMS.filter((i) => strugglingIds.includes(i.id)).map((i) => i.category))
+    );
+    setActiveCategories(cats);
+    setStatusMessage({
+      text: `Загружено ${strugglingIds.length} сложных элементов для повторения. Нажмите «Новый звук»!`,
+      type: 'idle',
+    });
+  }, []);
+
   const handleResetStats = useCallback(async () => {
     const fresh = await resetStatsInDB();
     setStats(fresh);
   }, []);
 
-  // User submits answer in Standard mode
+  const handleResetMarathon = useCallback(() => {
+    resetMarathonState();
+    setStatusMessage({
+      text: 'Серия сброшена. Начните марафон заново!',
+      type: 'idle',
+    });
+  }, [resetMarathonState]);
+
+  // User submits answer in Standard or Marathon mode
   const handleSelectAnswer = useCallback(
     (selectedItem: MusicItem) => {
       if (!currentTask || currentTask.userAnswerId !== null) return;
 
       const isCorrect = selectedItem.id === currentTask.item.id;
+
+      // Log answer submission action
+      logAction(`Выбран ответ: ${selectedItem.name} (${isCorrect ? 'Верно' : 'Неверно'})`);
 
       // Update local statistics storage
       recordAnswer(currentTask.item.id, isCorrect);
@@ -891,6 +1437,9 @@ export default function App() {
       );
 
       if (isCorrect) {
+        setLastWrongAnswer(null);
+        handleCorrectMarathonAnswer(settings);
+
         setStatusMessage({
           text: `Верно! Это «${currentTask.item.name}» (тоника: ${currentTask.rootNoteName})`,
           type: 'correct',
@@ -904,13 +1453,20 @@ export default function App() {
           }, 1100);
         }
       } else {
+        handleWrongMarathonAnswer();
+        setLastWrongAnswer({
+          chosenItem: selectedItem,
+          targetItem: currentTask.item,
+          rootMidi: currentTask.rootMidi,
+        });
+
         setStatusMessage({
           text: `Ошибка! Правильный ответ: «${currentTask.item.name}» (тоника: ${currentTask.rootNoteName})`,
           type: 'wrong',
         });
       }
     },
-    [currentTask, recordAnswer, settings.autoAdvanceOnCorrect, handleNewTask]
+    [currentTask, recordAnswer, settings, handleNewTask]
   );
 
   // Oral mode reveal
@@ -978,9 +1534,8 @@ export default function App() {
       setActiveItemIds((prev) => {
         const allSelected = categoryItemIds.length > 0 && categoryItemIds.every((id) => prev.includes(id));
         if (allSelected) {
-          // Deselect, but ensure at least 1 item remains in active pool
-          const remaining = prev.filter((id) => !categoryItemIds.includes(id));
-          return remaining.length > 0 ? remaining : prev;
+          // Deselect
+          return prev.filter((id) => !categoryItemIds.includes(id));
         } else {
           // Multi-select: add this category to active items
           return Array.from(new Set([...prev, ...categoryItemIds]));
@@ -990,8 +1545,7 @@ export default function App() {
       setActiveCategories((prev) => {
         const allIn = targetCategories.every((c) => prev.includes(c));
         if (allIn) {
-          const remaining = prev.filter((c) => !targetCategories.includes(c as CategoryId));
-          return remaining.length > 0 ? remaining : prev;
+          return prev.filter((c) => !targetCategories.includes(c as CategoryId));
         } else {
           return Array.from(new Set([...prev, ...targetCategories]));
         }
@@ -1075,7 +1629,7 @@ export default function App() {
 
     if (newMode === 'construction') {
       setSettings((prev) => ({ ...prev, direction: 'random', style: 'arpeggio' }));
-    } else if (newMode === 'oral' || newMode === 'standard') {
+    } else if (newMode === 'oral' || newMode === 'standard' || newMode === 'marathon') {
       setSettings((prev) => ({ ...prev, direction: 'random' }));
     }
   }, []);
@@ -1083,8 +1637,13 @@ export default function App() {
   // Stop continuous drone & all sounds when switching modes
   useEffect(() => {
     audioEngine.stopAll();
-    if (mode !== 'construction') {
+    audioEngine.stopCalibrationTone();
+    if (mode !== 'construction' && mode !== 'degree') {
       audioEngine.stopDrone();
+      setIsDroneActive(false);
+    }
+    if (mode === 'degree') {
+      handleNewDegreeTask();
     }
     if (mode === 'tonal' && !tonalTask) {
       handleNewTonalTask();
@@ -1092,136 +1651,180 @@ export default function App() {
     if (mode === 'progression' && !progressionTask) {
       handleNewProgressionTask();
     }
+    if ((mode === 'standard' || mode === 'marathon') && !currentTask) {
+      handleNewTask();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // Apply light or dark theme class to root html document
+  // Global zero-latency AudioContext unlocker on first user gesture
   useEffect(() => {
-    if (settings.theme === 'light') {
-      document.documentElement.classList.add('light');
+    const unlockAudio = () => {
+      audioEngine.getContext();
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    window.addEventListener('keydown', unlockAudio, { passive: true });
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
+
+  // Ergonomic Global Keyboard Shortcuts
+  useKeyboardShortcuts({
+    onReplay: handleReplay,
+    onNewTask: handleNewTask,
+    onReveal:
+      mode === 'oral'
+        ? handleOralReveal
+        : mode === 'construction'
+        ? handleConstructionReveal
+        : mode === 'tonal'
+        ? handleTonalReveal
+        : mode === 'progression'
+        ? handleProgressionReveal
+        : undefined,
+  });
+
+  // Dynamically apply dark / light theme class to root html document
+  useEffect(() => {
+    const isLight = settings.theme === 'light';
+    if (isLight) {
+      document.documentElement.classList.add('light', 'light-mode');
       document.documentElement.classList.remove('dark');
     } else {
       document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
+      document.documentElement.classList.remove('light', 'light-mode');
     }
   }, [settings.theme]);
 
-  // Keyboard shortcut listener (Space = replay, N = new)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-
-      if (e.code === 'Space') {
-        e.preventDefault();
-        handleReplay();
-      } else if (e.key === 'n' || e.key === 'N' || e.key === 'т' || e.key === 'Т') {
-        handleNewTask();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleReplay, handleNewTask]);
-
-  const currentTheme = settings.theme || 'dark';
-  const isLight = currentTheme === 'light' || currentTheme.startsWith('light');
-  
-  let themeVariantClass = 'dark bg-slate-950 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black text-slate-100';
-  if (currentTheme === 'light_warm' || currentTheme === 'light') {
-    themeVariantClass = 'light light-mode theme-warm text-slate-900';
-  } else if (currentTheme === 'light_slate') {
-    themeVariantClass = 'light light-mode theme-slate text-slate-900';
-  } else if (currentTheme === 'light_sand') {
-    themeVariantClass = 'light light-mode theme-sand text-slate-900';
-  }
+  const themeVariantClass =
+    settings.theme === 'light'
+      ? 'light-mode bg-[#F5EBDD] text-[#413333]'
+      : 'dark bg-slate-950 text-slate-100';
 
   return (
-    <div className={`min-h-screen ${themeVariantClass} flex flex-col items-center justify-start p-2 sm:p-4 select-none font-sans transition-colors duration-200`}>
-      <div className="w-full max-w-5xl flex flex-col gap-2.5 sm:gap-3">
-        {/* Top Control Bar: Left Settings Drawer Trigger + Mode Switcher */}
-        <div className="w-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-xl p-1.5 flex items-center justify-between gap-1.5 shadow-sm">
-          {/* Collapsible Left Settings Drawer Button (Icon only) */}
+    <div className={`min-h-screen ${themeVariantClass} flex flex-col items-center justify-start p-2 sm:p-4 select-none font-sans transition-colors duration-150`}>
+      <div 
+        className={`w-full ${mode === 'tonal' || mode === 'progression' ? 'max-w-6xl' : 'max-w-5xl'} flex flex-col gap-2.5 sm:gap-3`}
+      >
+        {/* Top Control Bar: Left Settings Drawer Trigger + Theme Toggle + Mode Switcher */}
+        <div className="w-full flex items-center gap-2">
+          {/* Collapsible Left Settings Drawer Button Outside General Cloud */}
           <button
             onClick={() => setIsLeftDrawerOpen(true)}
-            className="flex items-center justify-center p-2 bg-indigo-600/20 hover:bg-indigo-600/30 active:scale-95 text-indigo-300 hover:text-indigo-200 border border-indigo-500/40 rounded-lg transition cursor-pointer shrink-0 shadow-sm"
-            title="Настройки"
+            className="flex items-center justify-center p-2.5 bg-slate-900/90 hover:bg-slate-800 active:scale-95 text-slate-200 border border-slate-800/80 rounded-xl transition cursor-pointer shrink-0 shadow-xs"
+            title="Настройки тренажера"
             aria-label="Настройки"
           >
             <SlidersHorizontal className="w-4 h-4" />
           </button>
 
-          <div className="h-5 w-px bg-slate-800 shrink-0" />
-
-          {/* Training Mode Switcher Tabs */}
-          <div className="flex-1 flex items-center gap-1 min-w-0">
+          {/* General Cloud Container for Mode Switcher */}
+          <div className="flex-1 bg-slate-900/90 border border-slate-800/80 rounded-xl p-1.5 flex items-center justify-between gap-1.5 shadow-xs">
+            {/* Training Mode Switcher Tabs */}
+            <div className="flex-1 flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5 min-w-0">
             <button
-              onClick={() => handleSwitchMode(mode === 'standard' ? 'standard' : 'oral')}
-              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-lg text-xs font-semibold transition cursor-pointer min-w-0 ${
-                mode === 'oral' || mode === 'standard'
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-950 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              onClick={() => handleSwitchMode(mode === 'standard' || mode === 'marathon' ? mode : 'oral')}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-md text-[11px] sm:text-xs font-semibold transition cursor-pointer whitespace-nowrap min-w-0 ${
+                mode === 'oral' || mode === 'standard' || mode === 'marathon'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
               title="Элементы (интервалы, аккорды, гаммы, лады на слух)"
             >
               <Music className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate whitespace-nowrap hidden min-[360px]:inline">Элементы</span>
+              <span className="hidden lg:inline">Элементы</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchMode('degree')}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-md text-[11px] sm:text-xs font-semibold transition cursor-pointer whitespace-nowrap min-w-0 ${
+                mode === 'degree'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+              title="Ступени (слуховое угадывание ступеней в ладу)"
+            >
+              <Radio className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden lg:inline">Ступени</span>
             </button>
 
             <button
               onClick={() => handleSwitchMode('construction')}
-              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-lg text-xs font-semibold transition cursor-pointer min-w-0 ${
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-md text-[11px] sm:text-xs font-semibold transition cursor-pointer whitespace-nowrap min-w-0 ${
                 mode === 'construction'
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-950 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
               title="Построение элементов от звука вверх и вниз"
             >
               <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate whitespace-nowrap hidden min-[360px]:inline">Построение</span>
+              <span className="hidden lg:inline">Построение</span>
             </button>
 
             <button
               onClick={() => handleSwitchMode('tonal')}
-              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-lg text-xs font-semibold transition cursor-pointer min-w-0 ${
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-md text-[11px] sm:text-xs font-semibold transition cursor-pointer whitespace-nowrap min-w-0 ${
                 mode === 'tonal'
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-950 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
-              title="Тональность (ступени и аккорды в ладу)"
+              title="Тональность (функции и аккорды в ладу)"
             >
-              <Radio className="w-3.5 h-3.5 shrink-0 text-indigo-300" />
-              <span className="truncate whitespace-nowrap hidden min-[360px]:inline">Тональность</span>
+              <Layers className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden lg:inline">Тональность</span>
             </button>
 
             <button
               onClick={() => handleSwitchMode('progression')}
-              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-lg text-xs font-semibold transition cursor-pointer min-w-0 ${
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-md text-[11px] sm:text-xs font-semibold transition cursor-pointer whitespace-nowrap min-w-0 ${
                 mode === 'progression'
-                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-950 font-bold'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
               }`}
-              title="Гармония (4-голосные гармонические обороты)"
+              title="Обороты (4-голосные гармонические обороты)"
             >
-              <GitBranch className="w-3.5 h-3.5 shrink-0 text-indigo-300" />
-              <span className="truncate whitespace-nowrap hidden min-[360px]:inline">Гармония</span>
+              <GitBranch className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden lg:inline">Обороты</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchMode('harmonization')}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-md text-[11px] sm:text-xs font-semibold transition cursor-pointer whitespace-nowrap min-w-0 ${
+                mode === 'harmonization'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+              title="Гармонизация мелодии (подбор аккордов к мелодии)"
+            >
+              <ListMusic className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden lg:inline">Гармонизация</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchMode('pitch_memory')}
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-1.5 sm:px-2 rounded-md text-[11px] sm:text-xs font-semibold transition cursor-pointer whitespace-nowrap min-w-0 ${
+                mode === 'pitch_memory'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+              title="Калибровка Ля (абсолютная память высоты 440 Гц)"
+            >
+              <Target className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden lg:inline">Калибровка</span>
             </button>
           </div>
-
-          <div className="h-5 w-px bg-slate-800 shrink-0" />
-
-          {/* Quick Phone Install PWA button (Icon on mobile) */}
-          <button
-            onClick={() => setIsInstallModalOpen(true)}
-            className="flex items-center justify-center p-2 sm:px-2.5 sm:py-1.5 bg-indigo-950/70 hover:bg-indigo-900/80 active:scale-95 text-indigo-300 hover:text-indigo-100 border border-indigo-500/40 rounded-lg transition cursor-pointer shrink-0 text-xs font-semibold shadow-sm"
-            title="Установить приложение на телефон (PWA)"
-            aria-label="Установить PWA"
-          >
-            <Smartphone className="w-4 h-4 text-indigo-400 shrink-0" />
-            <span className="hidden md:inline ml-1">Установить</span>
-          </button>
         </div>
+      </div>
 
         {/* Quick Sets Bar */}
-        {mode !== 'tonal' && mode !== 'progression' && (
+        {mode !== 'tonal' && mode !== 'progression' && mode !== 'pitch_memory' && mode !== 'harmonization' && mode !== 'degree' && (
           <div className="w-full">
             <CategoryChips
               selectedCategories={selectedQuickCategories}
@@ -1230,8 +1833,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Style & Direction Toggles for Standard, Oral and Construction Modes */}
-        {(mode === 'standard' || mode === 'oral' || mode === 'construction') && (
+        {/* Style & Direction Toggles for Standard, Oral, Marathon and Construction Modes */}
+        {(mode === 'standard' || mode === 'oral' || mode === 'marathon' || mode === 'construction') && (
           <PlaybackStyleDirectionBar
             settings={settings}
             onSettingsChange={handleUpdateSettings}
@@ -1240,229 +1843,377 @@ export default function App() {
           />
         )}
 
-        {/* Status Message - only shown in Standard Test mode when giving feedback */}
-        {mode === 'standard' && statusMessage.type !== 'idle' && (
-          <div className="w-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-xl p-2 sm:p-2.5 shadow-md flex items-center justify-between gap-2">
-            <div
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-xs font-semibold min-h-[38px] ${
-                statusMessage.type === 'correct'
-                  ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-200 shadow-sm'
-                  : statusMessage.type === 'wrong'
-                  ? 'bg-rose-950/70 border-rose-500/80 text-rose-200 shadow-sm'
-                  : 'bg-indigo-950/70 border-indigo-500/80 text-indigo-200 animate-pulse'
-              }`}
-            >
-              {statusMessage.type === 'correct' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
-              {statusMessage.type === 'wrong' && <XCircle className="w-4 h-4 text-rose-400 shrink-0" />}
-              {statusMessage.type === 'playing' && <Volume2 className="w-4 h-4 text-indigo-400 shrink-0 animate-bounce" />}
-              <span className="truncate">{statusMessage.text}</span>
-            </div>
-          </div>
+        {/* Marathon Mode: Interactive gamified level progress bar and streak tracker */}
+        {mode === 'marathon' && (
+          <MarathonProgressBar
+            marathonStreak={marathonStreak}
+            marathonBestStreak={marathonBestStreak}
+            isNewRecord={isNewRecord}
+            statusMessage={statusMessage}
+            currentTask={currentTask}
+            isPlaying={isPlaying}
+            onReset={handleResetMarathon}
+          />
         )}
 
-        {/* Primary Interactive Training Zone */}
-        <main className="w-full pb-36 sm:pb-40">
-          {mode === 'standard' && (
-            <AnswerGrid
-              activeItemIds={activeItemIds}
-              currentTask={currentTask}
-              onSelectAnswer={handleSelectAnswer}
-              disabled={false}
-              onEnablePreset={handleEnablePreset}
-              onPlayComparison={handlePlayComparison}
-            />
-          )}
 
-          {mode === 'oral' && (
-            <OralModeCard
-              currentTask={currentTask}
-              settings={settings}
-              onReveal={handleOralReveal}
-              onReplay={handleReplay}
-            />
-          )}
 
-          {mode === 'construction' && (
-            <ConstructionModeCard
-              currentTask={currentTask}
-              settings={settings}
-              onReveal={handleConstructionReveal}
-              onReplayRoot={handleReplayRoot}
-              onReplayFull={handleConstructionReveal}
-            />
+        {/* Status Message - only shown in Standard Test mode when giving feedback */}
+        <AnimatePresence mode="wait">
+          {mode === 'standard' && !lastWrongAnswer && statusMessage.type !== 'idle' && statusMessage.type !== 'playing' && (
+            <motion.div
+              key={`${statusMessage.type}-${statusMessage.text}`}
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: ANTI_SLOP_EASE }}
+              className="w-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-xl p-2 sm:p-2.5 shadow-md flex items-center justify-between gap-2"
+            >
+              <div
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-xs font-semibold min-h-[38px] ${
+                  statusMessage.type === 'correct'
+                    ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-200 shadow-sm'
+                    : statusMessage.type === 'wrong'
+                    ? 'bg-rose-950/70 border-rose-500/80 text-rose-200 shadow-sm'
+                    : 'bg-indigo-950/70 border-indigo-500/80 text-indigo-200 animate-pulse'
+                }`}
+              >
+                {statusMessage.type === 'correct' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+                {statusMessage.type === 'wrong' && <XCircle className="w-4 h-4 text-rose-400 shrink-0" />}
+                {statusMessage.type === 'playing' && <Volume2 className="w-4 h-4 text-indigo-400 shrink-0 animate-bounce" />}
+                <span className="truncate">{statusMessage.text}</span>
+              </div>
+            </motion.div>
           )}
+        </AnimatePresence>
 
-          {mode === 'tonal' && (
-            <TonalModeCard
-              task={tonalTask}
-              settings={settings}
-              activePlayingMidis={tonalActiveMidis}
-              onReveal={handleTonalReveal}
-              onSettingsChange={handleUpdateSettings}
-              onPlayCadence={handlePlayKeyCadence}
-              onVisualNotes={(midis) => {
-                setTonalActiveMidis(midis);
-              }}
-              onPreviewDegree={handlePreviewTonalDegree}
-            />
-          )}
+        {/* Primary Interactive Training Zone with Anti-Slop Smooth Bezier Transitions */}
+        <main className={`w-full ${mode === 'pitch_memory' ? 'pb-4' : (mode === 'standard' || mode === 'marathon' ? 'pb-24 sm:pb-28' : 'pb-36 sm:pb-40')}`}>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={mode}
+              initial={{ opacity: 0, y: 8, scale: 0.992 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.992 }}
+              transition={{ duration: 0.22, ease: ANTI_SLOP_EASE }}
+              className="w-full"
+            >
+              {(mode === 'standard' || mode === 'marathon') && (
+                <AnswerGrid
+                  activeItemIds={activeItemIds}
+                  currentTask={currentTask}
+                  onSelectAnswer={handleSelectAnswer}
+                  disabled={false}
+                  onEnablePreset={handleEnablePreset}
+                  onPlayComparison={handlePlayComparison}
+                  onNewTask={handleNewTask}
+                />
+              )}
 
-          {mode === 'progression' && (
-            <ProgressionModeCard
-              progression={progressionTask}
-              settings={settings}
-              isPlaying={isPlaying}
-              activePlayingMidis={progressionActiveMidis}
-              activeStepIndex={progressionActiveStepIndex}
-              onPlayProgression={handleReplayProgressionTask}
-              onPlayStep={handlePlayProgressionStep}
-              onPlayVoice={handlePlayProgressionVoice}
-              onPlayStepVoice={handlePlayProgressionStepVoice}
-              onNewTask={handleNewProgressionTask}
-              onSettingsChange={handleUpdateSettings}
-              onPlayCadence={handlePlayKeyCadence}
-              onReveal={handleProgressionReveal}
-              onOpenProgressionCatalog={() => setIsProgressionCatalogOpen(true)}
-            />
-          )}
+              {mode === 'oral' && (
+                <OralModeCard
+                  currentTask={currentTask}
+                  settings={settings}
+                  onReveal={handleOralReveal}
+                  onReplay={handleReplay}
+                />
+              )}
+
+              {mode === 'degree' && (
+                <ScaleDegreeModeCard
+                  task={degreeTask}
+                  settings={settings}
+                  isPlaying={isPlaying}
+                  activePlayingMidis={[]}
+                  onPlayTaskNote={handlePlayDegreeTaskNote}
+                  onPlayCadence={handlePlayKeyCadence}
+                  onPlayResolution={handlePlayDegreeResolution}
+                  onSelectAnswer={handleSelectDegreeAnswer}
+                  onNewTask={handleNewDegreeTask}
+                  onSettingsChange={handleUpdateSettings}
+                  onToggleDrone={handleToggleDrone}
+                  isDroneActive={isDroneActive}
+                  degreeMarathonStreak={degreeMarathonStreak}
+                  degreeMarathonBestStreak={degreeMarathonBestStreak}
+                  isNewRecord={degreeMarathonStreak > 0 && degreeMarathonStreak === degreeMarathonBestStreak}
+                  onResetMarathon={() => setDegreeMarathonStreak(0)}
+                  isTwoNotes={degreeIsTwoNotes}
+                  onToggleTwoNotes={setDegreeIsTwoNotes}
+                />
+              )}
+
+              {mode === 'construction' && (
+                <ConstructionModeCard
+                  currentTask={currentTask}
+                  settings={settings}
+                  constructionStepCount={constructionStepCount}
+                  onReveal={handleConstructionReveal}
+                  onReplayRoot={handleReplayRoot}
+                  onReplayFull={handleConstructionReveal}
+                  onStepNext={handleConstructionStepNext}
+                />
+              )}
+
+              {mode === 'tonal' && (
+                <TonalModeCard
+                  task={tonalTask}
+                  settings={settings}
+                  activePlayingMidis={tonalActiveMidis}
+                  onReveal={handleTonalReveal}
+                  onSettingsChange={handleUpdateSettings}
+                  onPlayCadence={handlePlayKeyCadence}
+                  onVisualNotes={(midis) => {
+                    setTonalActiveMidis(midis);
+                  }}
+                  onPreviewDegree={handlePreviewTonalDegree}
+                  onNewTask={handleNewTonalTask}
+                  onReplay={handlePlayTonalChordOnly}
+                  onReplayAll={handleReplayTonalAll}
+                />
+              )}
+
+              {mode === 'progression' && (
+                <ProgressionModeCard
+                  progression={progressionTask}
+                  settings={settings}
+                  isPlaying={isPlaying}
+                  activePlayingMidis={progressionActiveMidis}
+                  activeStepIndex={progressionActiveStepIndex}
+                  onPlayProgression={handleReplayProgressionTask}
+                  onPlayStep={handlePlayProgressionStep}
+                  onPlayVoice={handlePlayProgressionVoice}
+                  onPlayStepVoice={handlePlayProgressionStepVoice}
+                  onNewTask={handleNewProgressionTask}
+                  onSettingsChange={handleUpdateSettings}
+                  onPlayCadence={handlePlayKeyCadence}
+                  onReveal={handleProgressionReveal}
+                  onOpenProgressionCatalog={() => setIsProgressionCatalogOpen(true)}
+                />
+              )}
+
+              {mode === 'harmonization' && (
+                <HarmonizationStudio
+                  settings={settings}
+                  onSettingsChange={handleUpdateSettings}
+                />
+              )}
+
+              {mode === 'pitch_memory' && (
+                <PitchCalibrationCard
+                  settings={settings}
+                  onSettingsChange={handleUpdateSettings}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
       {/* Fixed Bottom Action Dock (Always pinned in one place at the bottom of the screen) */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none flex justify-center p-2.5 sm:p-4 bg-gradient-to-t from-slate-950 via-slate-950/95 to-transparent pt-8 fixed-bottom-dock">
-        <div className="w-full max-w-xl pointer-events-auto flex flex-col gap-2">
-          {/* Row 1: "Показать ответ" / "Проверить построение" in Oral, Construction, and Tonal modes */}
-          {mode === 'oral' && (
-            !currentTask?.revealed ? (
-              <button
-                type="button"
-                onClick={handleOralReveal}
-                disabled={!currentTask}
-                className="w-full h-12 sm:h-13 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-40 text-white font-bold text-sm sm:text-base rounded-2xl shadow-lg shadow-indigo-950/50 border border-indigo-400/40 transition cursor-pointer"
-                title="Показать ответ"
-              >
-                <Eye className="w-4 h-4 shrink-0" />
-                <span>Показать ответ</span>
-              </button>
-            ) : (
-              <div className="w-full h-12 sm:h-13 flex items-center justify-center gap-2 px-4 bg-emerald-950/70 border border-emerald-500/50 rounded-2xl text-emerald-300 text-xs sm:text-sm font-semibold">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Ответ показан в карточке</span>
-              </div>
-            )
-          )}
-
-          {mode === 'construction' && (
-            !currentTask?.revealed ? (
-              <button
-                type="button"
-                onClick={handleConstructionReveal}
-                disabled={!currentTask}
-                className="w-full h-12 sm:h-13 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-40 text-white font-bold text-sm sm:text-base rounded-2xl shadow-lg shadow-indigo-950/50 border border-indigo-400/40 transition cursor-pointer"
-                title="Проверить построение"
-              >
-                <Eye className="w-4 h-4 shrink-0" />
-                <span>Проверить построение</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleConstructionReveal}
-                disabled={!currentTask}
-                className="w-full h-12 sm:h-13 flex items-center justify-center gap-2 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] disabled:opacity-40 text-white font-bold text-sm sm:text-base rounded-2xl shadow-lg shadow-emerald-950/50 border border-emerald-400/40 transition cursor-pointer"
-                title="Слушать построенное еще раз"
-              >
-                <RotateCcw className="w-4 h-4 shrink-0" />
-                <span>Слушать построенное</span>
-              </button>
-            )
-          )}
-
-          {mode === 'tonal' && (
-            <div className="w-full flex items-center gap-2">
-              {!tonalTask?.revealed ? (
+      {mode !== 'pitch_memory' && mode !== 'degree' && mode !== 'harmonization' && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none flex justify-center p-2.5 sm:p-4 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent pt-6 fixed-bottom-dock">
+          <div className="w-full max-w-xl pointer-events-auto flex flex-col gap-1.5">
+            {/* Row 1: "Показать ответ" / "Проверить построение" in Oral, Construction, and Tonal modes */}
+            {mode === 'oral' && (
+              !currentTask?.revealed ? (
                 <button
                   type="button"
-                  onClick={handleTonalReveal}
-                  disabled={!tonalTask}
-                  className="flex-1 h-12 sm:h-13 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-40 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-lg shadow-indigo-950/50 border border-indigo-400/40 transition cursor-pointer"
-                  title="Показать теоретический анализ и ответ"
+                  onClick={handleOralReveal}
+                  disabled={!currentTask}
+                  className="w-full h-11 sm:h-12 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-40 text-white font-semibold text-xs sm:text-sm rounded-lg shadow-sm border border-indigo-500 transition cursor-pointer"
+                  title="Показать ответ (Горячая клавиша: Enter или R)"
                 >
                   <Eye className="w-4 h-4 shrink-0" />
                   <span>Показать ответ</span>
+                  <kbd className="hidden sm:inline-block ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/20 text-white font-mono leading-none">
+                    Enter
+                  </kbd>
                 </button>
               ) : (
-                <div className="flex-1 h-12 sm:h-13 flex items-center justify-center gap-2 px-3 bg-emerald-950/70 border border-emerald-500/50 rounded-2xl text-emerald-300 text-xs sm:text-sm font-semibold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Ответ показан на клавиатуре</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {mode === 'progression' && (
-            <div className="w-full flex items-center gap-2">
-              {!progressionTask?.revealed ? (
-                <button
-                  type="button"
-                  onClick={handleProgressionReveal}
-                  disabled={!progressionTask}
-                  className="flex-1 h-12 sm:h-13 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-40 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-lg shadow-indigo-950/50 border border-indigo-400/40 transition cursor-pointer"
-                  title="Показать правильный ответ и голосоведение"
-                >
-                  <Eye className="w-4 h-4 shrink-0" />
-                  <span>Показать ответ</span>
-                </button>
-              ) : (
-                <div className="flex-1 h-12 sm:h-13 flex items-center justify-center gap-2 px-3 bg-emerald-950/70 border border-emerald-500/50 rounded-2xl text-emerald-300 text-xs sm:text-sm font-semibold">
+                <div className="w-full h-11 sm:h-12 flex items-center justify-center gap-2 px-4 bg-emerald-950/60 border border-emerald-500/70 rounded-lg text-emerald-200 text-xs sm:text-sm font-medium">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Ответ показан в карточке</span>
                 </div>
-              )}
+              )
+            )}
+
+            {mode === 'construction' && (
+              <div className="w-full flex items-center gap-1.5">
+                {!currentTask?.revealed ? (
+                  <button
+                    type="button"
+                    onClick={handleConstructionReveal}
+                    disabled={!currentTask}
+                    className="flex-1 h-11 sm:h-12 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-40 text-white font-semibold text-xs sm:text-sm rounded-lg shadow-sm border border-indigo-500 transition cursor-pointer"
+                    title="Проверить построение (Горячая клавиша: Enter или R)"
+                  >
+                    <Eye className="w-4 h-4 shrink-0" />
+                    <span>Проверить построение</span>
+                    <kbd className="hidden sm:inline-block ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/20 text-white font-mono leading-none">
+                      Enter
+                    </kbd>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleConstructionReveal}
+                    disabled={!currentTask}
+                    className="flex-1 h-11 sm:h-12 flex items-center justify-center gap-2 px-4 bg-slate-800 hover:bg-slate-700 active:scale-[0.99] disabled:opacity-40 text-slate-100 font-semibold text-xs sm:text-sm rounded-lg shadow-sm border border-slate-700 transition cursor-pointer"
+                    title="Слушать построенное еще раз"
+                  >
+                    <RotateCcw className="w-4 h-4 shrink-0" />
+                    <span>Слушать построенное</span>
+                  </button>
+                )}
+
+                {/* Spacer aligning with Repeat Harmonic below */}
+                <div className="w-11 sm:w-12 shrink-0 pointer-events-none" />
+
+                {/* Step-by-Step Add Note Button */}
+                <button
+                  type="button"
+                  onClick={handleConstructionStepNext}
+                  disabled={!currentTask}
+                  className="w-11 sm:w-12 h-11 sm:h-12 flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 shadow-sm transition cursor-pointer shrink-0 relative active:scale-95"
+                  title={
+                    (currentTask?.constructionDirection || 'up') === 'up'
+                      ? 'Добавить следующий звук вверх (+1 нота)'
+                      : 'Добавить следующий звук вниз (+1 нота)'
+                  }
+                  aria-label="Добавить следующий звук"
+                >
+                  {(currentTask?.constructionDirection || 'up') === 'up' ? (
+                    <ArrowUp className="w-4 h-4 stroke-[2.5] shrink-0" />
+                  ) : (
+                    <ArrowDown className="w-4 h-4 stroke-[2.5] shrink-0" />
+                  )}
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-[10px] font-bold text-white">
+                    +
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {mode === 'tonal' && (
+              <div className="w-full flex items-center gap-1.5">
+                {!tonalTask?.revealed ? (
+                  <button
+                    type="button"
+                    onClick={handleTonalReveal}
+                    disabled={!tonalTask}
+                    className="flex-1 h-11 sm:h-12 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-40 text-white font-semibold text-xs sm:text-sm rounded-lg shadow-sm border border-indigo-500 transition cursor-pointer"
+                    title="Показать теоретический анализ и ответ (Горячая клавиша: Enter или R)"
+                  >
+                    <Eye className="w-4 h-4 shrink-0" />
+                    <span>Показать ответ</span>
+                    <kbd className="hidden sm:inline-block ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/20 text-white font-mono leading-none">
+                      Enter
+                    </kbd>
+                  </button>
+                ) : (
+                  <div className="flex-1 h-11 sm:h-12 flex items-center justify-center gap-2 px-3 bg-emerald-950/60 border border-emerald-500/70 rounded-lg text-emerald-200 text-xs sm:text-sm font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Ответ показан на клавиатуре</span>
+                  </div>
+                )}
+
+                {/* Spacer aligning with Repeat Harmonic below */}
+                <div className="w-11 sm:w-12 shrink-0 pointer-events-none" />
+
+                {/* Tuning button: identical size/style */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const effectiveMode = settings.tonalScaleMode === 'minor'
+                      ? 'minor'
+                      : settings.tonalScaleMode === 'major'
+                      ? 'major'
+                      : tonalTask?.keyScaleMode || 'major';
+                    const effectiveTonic = tonalTask?.baseNoteName || (settings.tonalRootNote !== 'random' ? settings.tonalRootNote : 'C') || 'C';
+                    handlePlayKeyCadence(effectiveTonic, effectiveMode);
+                  }}
+                  className="w-11 sm:w-12 h-11 sm:h-12 flex items-center justify-center bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-lg border border-slate-700 shadow-sm transition cursor-pointer shrink-0"
+                  title="Настройка в тональности (каденция D7 → T)"
+                  aria-label="Настройка тональности"
+                >
+                  <Music className="w-4 h-4 shrink-0" />
+                </button>
+              </div>
+            )}
+
+            {mode === 'progression' && (
+              <div className="w-full flex items-center gap-1.5">
+                {!progressionTask?.revealed ? (
+                  <button
+                    type="button"
+                    onClick={handleProgressionReveal}
+                    disabled={!progressionTask}
+                    className="flex-1 h-11 sm:h-12 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] disabled:opacity-40 text-white font-semibold text-xs sm:text-sm rounded-lg shadow-sm border border-indigo-500 transition cursor-pointer"
+                    title="Показать правильный ответ и голосоведение (Горячая клавиша: Enter или R)"
+                  >
+                    <Eye className="w-4 h-4 shrink-0" />
+                    <span>Показать ответ</span>
+                    <kbd className="hidden sm:inline-block ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/20 text-white font-mono leading-none">
+                      Enter
+                    </kbd>
+                  </button>
+                ) : (
+                  <div className="flex-1 h-11 sm:h-12 flex items-center justify-center gap-2 px-3 bg-emerald-950/60 border border-emerald-500/70 rounded-lg text-emerald-200 text-xs sm:text-sm font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Ответ показан в карточке</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Row 2: "Новый звук" / "Новый оборот" + 2 Replay buttons */}
+            <div className="w-full flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleNewTask}
+                className="flex-1 h-11 sm:h-12 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-semibold text-xs sm:text-sm rounded-lg shadow-sm border border-indigo-500 transition cursor-pointer"
+                title="Новое задание (Горячая клавиша: N)"
+              >
+                <Play className="w-4 h-4 fill-current shrink-0" />
+                <span>{mode === 'progression' ? 'Новый оборот' : 'Новый звук'}</span>
+                <kbd className="hidden sm:inline-block ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/20 text-white font-mono leading-none">
+                  N
+                </kbd>
+              </button>
+
+              {/* Repeat Harmonic Button (Left) */}
+              <button
+                type="button"
+                onClick={() => handleReplay('harmonic')}
+                disabled={mode === 'progression' ? !progressionTask : mode === 'tonal' ? !tonalTask : !currentTask}
+                className="w-11 sm:w-12 h-11 sm:h-12 flex items-center justify-center bg-slate-800 hover:bg-slate-700 active:scale-95 disabled:opacity-40 text-slate-200 hover:text-white rounded-lg border border-slate-700 shadow-sm transition cursor-pointer shrink-0 group relative"
+                title="Повторить гармонически (вместе, Горячая клавиша: H)"
+                aria-label="Повторить гармонически"
+              >
+                <Layers className="w-4 h-4 shrink-0" />
+                <kbd className="hidden md:inline-block absolute -bottom-1 -right-1 text-[8px] px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono leading-tight">
+                  H
+                </kbd>
+              </button>
+
+              {/* Repeat Arpeggio Button (Right) */}
+              <button
+                type="button"
+                onClick={() => handleReplay('arpeggio')}
+                disabled={mode === 'progression' ? !progressionTask : mode === 'tonal' ? !tonalTask : !currentTask}
+                className="w-11 sm:w-12 h-11 sm:h-12 flex items-center justify-center bg-slate-800 hover:bg-slate-700 active:scale-95 disabled:opacity-40 text-slate-200 hover:text-white rounded-lg border border-slate-700 shadow-sm transition cursor-pointer shrink-0 group relative"
+                title="Повторить арпеджио (по звукам, Горячая клавиша: Пробел)"
+                aria-label="Повторить арпеджио"
+              >
+                <RotateCcw className="w-4 h-4 shrink-0" />
+                <kbd className="hidden md:inline-block absolute -bottom-1 -right-1 text-[8px] px-1 py-0.2 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono leading-tight">
+                  ␣
+                </kbd>
+              </button>
             </div>
-          )}
-
-          {/* Row 2: "Новый звук" / "Новый оборот" (flex-1) + 2 small Replay buttons (Harmonic & Arpeggio) */}
-          <div className="w-full flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleNewTask}
-              className="flex-1 h-12 sm:h-13 flex items-center justify-center gap-2 px-4 bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:scale-[0.99] text-white font-bold text-sm sm:text-base rounded-2xl shadow-xl shadow-indigo-950/60 border border-indigo-400/30 transition cursor-pointer"
-              title="Новое задание (Горячая клавиша: N)"
-            >
-              <Play className="w-4 h-4 fill-current shrink-0" />
-              <span>{mode === 'progression' ? 'Новый оборот' : 'Новый звук'}</span>
-              <kbd className="hidden sm:inline-block ml-1 text-[10px] px-1.5 py-0.5 rounded bg-white/20 text-white font-mono leading-none">
-                N
-              </kbd>
-            </button>
-
-            {/* Repeat Harmonic Button (Left) */}
-            <button
-              type="button"
-              onClick={() => handleReplay('harmonic')}
-              disabled={mode === 'progression' ? !progressionTask : mode === 'tonal' ? !tonalTask : !currentTask}
-              className="w-12 sm:w-14 h-12 sm:h-13 flex items-center justify-center bg-slate-900 hover:bg-slate-800 active:scale-95 disabled:opacity-40 text-indigo-300 hover:text-white rounded-2xl border border-slate-700/80 shadow-lg transition cursor-pointer shrink-0"
-              title="Повторить гармонически (вместе)"
-              aria-label="Повторить гармонически"
-            >
-              <Layers className="w-5 h-5 shrink-0" />
-            </button>
-
-            {/* Repeat Arpeggio Button (Right) */}
-            <button
-              type="button"
-              onClick={() => handleReplay('arpeggio')}
-              disabled={mode === 'progression' ? !progressionTask : mode === 'tonal' ? !tonalTask : !currentTask}
-              className="w-12 sm:w-14 h-12 sm:h-13 flex items-center justify-center bg-slate-900 hover:bg-slate-800 active:scale-95 disabled:opacity-40 text-indigo-400 hover:text-indigo-300 rounded-2xl border border-slate-700/80 shadow-lg transition cursor-pointer shrink-0"
-              title="Повторить арпеджио (по звукам, Горячая клавиша: Пробел)"
-              aria-label="Повторить арпеджио"
-            >
-              <RotateCcw className="w-5 h-5 shrink-0" />
-            </button>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Collapsible Left Settings Drawer (All Sound Parameters, Categories, Items, and Export) */}
       <LeftSettingsDrawer
@@ -1481,6 +2232,8 @@ export default function App() {
         onOpenInstallModal={() => setIsInstallModalOpen(true)}
         onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
         onOpenProgressionCatalog={() => setIsProgressionCatalogOpen(true)}
+        onOpenChangelogModal={() => setIsChangelogOpen(true)}
+        onOpenAcademicAuditModal={() => setIsAcademicAuditOpen(true)}
       />
 
       {/* Detailed Statistics Modal */}
@@ -1489,6 +2242,7 @@ export default function App() {
         onClose={() => setIsStatsModalOpen(false)}
         stats={stats}
         onResetStats={handleResetStats}
+        onPracticeStruggling={handlePracticeStruggling}
       />
 
       {/* PWA Phone Install Modal */}
@@ -1513,6 +2267,31 @@ export default function App() {
         onClose={() => setIsProgressionCatalogOpen(false)}
         settings={settings}
         onSelectProgression={handleSelectProgressionFromCatalog}
+      />
+
+      {/* Automatical Recent Fixes & Updates Changelog Modal */}
+      <ChangelogModal
+        isOpen={isChangelogOpen}
+        onClose={handleCloseChangelog}
+      />
+
+      {/* Academic Audit Dashboard Modal */}
+      <AcademicAuditModal
+        isOpen={isAcademicAuditOpen}
+        onClose={() => setIsAcademicAuditOpen(false)}
+        settings={settings}
+      />
+
+
+
+      {/* Emotional Design: Celebrations & Confetti Particles Overlay */}
+      <CelebrationEffects
+        active={celebrationState.active}
+        type={celebrationState.type}
+        levelNumber={celebrationState.levelNumber}
+        levelTitle={celebrationState.levelTitle}
+        streakCount={celebrationState.streakCount}
+        onClose={closeCelebration}
       />
     </div>
   );

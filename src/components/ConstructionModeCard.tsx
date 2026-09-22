@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { CurrentTask, PlaybackSettings } from '../types';
 import { getConstructionBreakdown, getCharacteristicResolution } from '../audio/solfegeHelper';
 import { ResolutionSchemeView, ResolutionVoiceRow } from './ResolutionSchemeView';
@@ -7,18 +8,22 @@ import {
   ArrowDown,
   Sparkles,
   ArrowRight,
+  Layers,
 } from 'lucide-react';
 
 interface ConstructionModeCardProps {
   currentTask: CurrentTask | null;
   settings?: PlaybackSettings;
+  constructionStepCount?: number;
   onReveal?: () => void;
   onReplayRoot?: () => void;
   onReplayFull?: () => void;
+  onStepNext?: () => void;
 }
 
 export const ConstructionModeCard: React.FC<ConstructionModeCardProps> = ({
   currentTask,
+  constructionStepCount = 1,
 }) => {
   const item = currentTask?.item;
   const rootNoteName = currentTask?.rootNoteName ?? 'C';
@@ -33,6 +38,9 @@ export const ConstructionModeCard: React.FC<ConstructionModeCardProps> = ({
     }
     return getConstructionBreakdown(item, currentTask.rootMidi, direction, rootNoteName);
   }, [currentTask, item, direction, rootNoteName]);
+
+  const totalNotes = breakdown.noteNames.length;
+  const effectiveStepCount = revealed ? totalNotes : Math.max(1, constructionStepCount);
 
   // Compute characteristic interval resolution if applicable
   const charResolution = useMemo(() => {
@@ -53,134 +61,196 @@ export const ConstructionModeCard: React.FC<ConstructionModeCardProps> = ({
 
   if (!currentTask || !item) {
     return (
-      <div className="w-full bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
-        <Sparkles className="w-8 h-8 text-amber-400/50" />
-        <p className="text-slate-300 text-xs sm:text-sm font-medium">
-          Нажмите <span className="text-indigo-400 font-bold">«Новый звук»</span> для старта режима построения
-        </p>
-        <p className="text-[11px] text-slate-500 max-w-sm">
-          В этом режиме звучит опорный тон, и вам предлагается построить интервал или аккорд вверх или вниз.
+      <div className="w-full bg-slate-900/60 border border-slate-800 rounded-xl p-8 text-center flex flex-col items-center justify-center gap-3">
+        <Sparkles className="w-8 h-8 text-slate-500" />
+        <p className="text-slate-400 text-xs sm:text-sm">
+          Нажмите <span className="text-slate-200 font-semibold">«Новый звук»</span> для старта режима построения
         </p>
       </div>
     );
   }
 
   return (
-    <div className="w-full bg-slate-900/70 backdrop-blur-xl border border-slate-800/80 rounded-xl p-4 sm:p-5 flex flex-col items-center text-center shadow-lg transition-all space-y-3.5">
-      {/* Highlighted Pitch & Direction Arrow */}
-      <div className="flex items-center justify-center gap-3 p-3 rounded-2xl bg-slate-950/70 border border-indigo-500/30 shadow-inner w-full max-w-xs">
-        <span className="text-2xl sm:text-3xl font-extrabold text-amber-300 font-mono tracking-tight">
-          {rootNoteName}
-        </span>
+    <div className="w-full flex flex-col items-center text-center transition-all gap-3">
+      {/* Header Bar: Note & Direction Badge */}
+      <div className="flex items-center justify-between gap-3 p-2 px-3 rounded-lg bg-slate-950/80 border border-slate-800 w-full max-w-lg">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400 font-medium">От ноты:</span>
+          <span className="text-xl font-mono font-bold text-amber-300 leading-none">
+            {rootNoteName}
+          </span>
+        </div>
 
         <div
-          className={`flex items-center justify-center w-9 h-9 rounded-full border shadow-md transition ${
+          className={`flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-semibold ${
             isUp
-              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-              : 'bg-sky-500/20 text-sky-400 border-sky-500/40'
+              ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800/40'
+              : 'bg-sky-950/50 text-sky-300 border-sky-800/40'
           }`}
-          title={isUp ? 'Построение вверх' : 'Построение вниз'}
         >
           {isUp ? (
-            <ArrowUp className="w-5 h-5 stroke-[2.5]" />
+            <>
+              <ArrowUp className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Вверх</span>
+            </>
           ) : (
-            <ArrowDown className="w-5 h-5 stroke-[2.5]" />
+            <>
+              <ArrowDown className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Вниз</span>
+            </>
           )}
         </div>
       </div>
 
-      {/* Main Prompt */}
-      <div className="space-y-1">
-        <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+      {/* Main Prompt Box */}
+      <div className="flex flex-col items-center gap-1 w-full max-w-lg bg-slate-950/60 border border-slate-800/80 p-3 rounded-lg">
+        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
+          Постройте:
+        </span>
+        <h2 className="text-xl sm:text-2xl font-bold text-slate-100 tracking-tight">
           {item.name}
         </h2>
         {item.hint && (
-          <span className="inline-block text-[10px] font-mono text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded">
+          <span className="text-[11px] font-mono bg-slate-900 text-indigo-300 px-2 py-0.5 rounded border border-slate-800 font-medium mt-0.5">
             {item.hint}
           </span>
         )}
       </div>
 
-      {/* Revealed Solution with Diatonic Spelling */}
-      {revealed && (
-        <div className="w-full max-w-xl flex flex-col items-center gap-3.5 animate-in fade-in zoom-in-95 duration-150 text-center">
+      {/* Solution Display with Diatonic Spelling & Step-by-Step Progress */}
+      <div className="w-full max-w-lg flex flex-col items-center gap-3 text-center">
+        {/* Characteristic Interval Resolution Vertical Scheme */}
+        {charResolution && (revealed || effectiveStepCount >= totalNotes) && (
+          <div className="w-full space-y-4">
+            {charResolution.isTritoneDouble ? (
+              <div className="flex flex-col gap-4 w-full">
+                <ResolutionSchemeView
+                  title="ув.4 (увеличенная кварта)"
+                  tonalityName={charResolution.uv4Resolution!.tonality}
+                  targetName={charResolution.uv4Resolution!.resolvedIntervalName}
+                  rows={charResolution.uv4Resolution!.voiceMovements.map((vm) => ({
+                    fromNote: vm.from,
+                    fromDegree: vm.degreeFrom,
+                    toNote: vm.to,
+                    toDegree: vm.degreeTo,
+                  }))}
+                  givenNoteName={rootNoteName}
+                />
+                <ResolutionSchemeView
+                  title="ум.5 (уменьшенная квинта)"
+                  tonalityName={charResolution.um5Resolution!.tonality}
+                  targetName={charResolution.um5Resolution!.resolvedIntervalName}
+                  rows={charResolution.um5Resolution!.voiceMovements.map((vm) => ({
+                    fromNote: vm.from,
+                    fromDegree: vm.degreeFrom,
+                    toNote: vm.to,
+                    toDegree: vm.degreeTo,
+                  }))}
+                  givenNoteName={rootNoteName}
+                />
+              </div>
+            ) : (
+              <ResolutionSchemeView
+                title="В ладу"
+                tonalityName={charResolution.tonality}
+                targetName={charResolution.resolvedIntervalName}
+                rows={resolutionRows}
+                givenNoteName={rootNoteName}
+              />
+            )}
+          </div>
+        )}
 
-          {/* Characteristic Interval Resolution Vertical Scheme */}
-          {charResolution && (
-            <ResolutionSchemeView
-              title="Разрешение интервала в тональности"
-              tonalityName={charResolution.tonality}
-              rows={resolutionRows}
-              givenNoteName={rootNoteName}
-            />
-          )}
+        {/* Sequence of Notes & Step-by-Step Interval Scheme */}
+        {(!charResolution || !revealed) && (
+          <>
+            {/* Vertical Note Stack: Given note at bottom if UP, at top if DOWN */}
+            {breakdown.noteNames.length > 0 && (() => {
+              const zipped = breakdown.noteNames.map((note, i) => ({
+                note,
+                label: breakdown.degreeLabels?.[i] || `${i + 1}`,
+                isRoot: i === 0,
+                isRevealed: i < effectiveStepCount,
+              }));
+              const itemsToRender = direction === 'up' ? [...zipped].reverse() : zipped;
 
-          {/* Sequence of Notes & Step-by-Step Interval Scheme */}
-          {!charResolution && (
-            <>
-              {/* Vertical Note Stack: Given note at bottom if UP, at top if DOWN */}
-              {breakdown.noteNames.length > 0 && (() => {
-                const zipped = breakdown.noteNames.map((note, i) => ({
-                  note,
-                  label: breakdown.degreeLabels?.[i] || `${i + 1}`,
-                  isRoot: i === 0,
-                }));
-                const itemsToRender = direction === 'up' ? [...zipped].reverse() : zipped;
-
-                return (
-                  <div className="w-full space-y-1.5 pt-1">
-                    <div className="flex flex-col items-center gap-1 w-full max-w-xs mx-auto">
-                      {itemsToRender.map((item, idx) => {
-                        const isSpecial = item.label.includes('♭') || item.label.includes('♯') || item.label.includes('♮');
-                        return (
-                          <div
-                            key={idx}
-                            className={`w-full flex items-center justify-between px-3.5 py-1.5 rounded-xl font-mono text-xs sm:text-sm border shadow-xs transition-all ${
-                              isSpecial
-                                ? 'bg-fuchsia-950/70 text-fuchsia-100 border-fuchsia-500/70 font-bold shadow-fuchsia-950/30'
-                                : item.isRoot
-                                ? 'bg-amber-950/40 text-amber-100 border border-amber-500/50 font-bold'
-                                : 'bg-slate-900 text-white border-slate-700/80'
-                            }`}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span className={`${isSpecial ? 'text-fuchsia-300 font-black' : item.isRoot ? 'text-amber-400 font-bold' : 'text-slate-300 font-extrabold'} text-xs font-mono`}>
-                                {item.label}
-                              </span>
-                            </div>
-                            <span className={`min-w-[36px] h-8 px-2 flex items-center justify-center rounded-lg border text-sm font-extrabold shadow-inner ${
-                              isSpecial
-                                ? 'bg-fuchsia-900/60 border-fuchsia-400/80 text-fuchsia-100'
-                                : item.isRoot
-                                ? 'bg-amber-950/80 border-amber-500/60 text-amber-200'
-                                : 'bg-slate-800 border-slate-600 text-slate-100'
-                            }`}>
-                              {item.note}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Clean Interval Scheme without Notes */}
-              {breakdown.steps.length > 0 && (
-                <div className="w-full space-y-1.5 pt-1 text-center">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                    Схема интервалов:
-                  </div>
-                  <div className="inline-flex flex-wrap items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs sm:text-sm font-mono font-bold text-emerald-400">
-                    {breakdown.steps.map((st) => st.intervalName).join(' + ')}
+              return (
+                <div className="w-full space-y-1">
+                  <div className="flex flex-col items-center gap-1 w-full max-w-sm mx-auto">
+                    {itemsToRender.map((itm, idx) => {
+                      const isSpecial = itm.isRevealed && (itm.label.includes('♭') || itm.label.includes('♯') || itm.label.includes('♮'));
+                      return (
+                        <motion.div
+                          key={idx}
+                          initial={false}
+                          animate={{
+                            scale: itm.isRevealed ? 1 : 0.98,
+                            opacity: itm.isRevealed ? 1 : 0.65,
+                          }}
+                          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                          className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-xs border transition-all ${
+                            !itm.isRevealed
+                              ? 'bg-slate-950/40 text-slate-600 border-slate-850 opacity-60'
+                              : isSpecial
+                              ? 'bg-slate-900/90 text-slate-100 border-indigo-500/40 font-semibold'
+                              : itm.isRoot
+                              ? 'bg-amber-950/40 text-amber-200 border-amber-800/40 font-semibold'
+                              : 'bg-slate-950/80 text-slate-200 border-slate-800'
+                          }`}
+                        >
+                          <span className={`${
+                            !itm.isRevealed
+                              ? 'text-slate-600 font-medium'
+                              : isSpecial
+                              ? 'text-indigo-300'
+                              : itm.isRoot
+                              ? 'text-amber-400'
+                              : 'text-slate-400'
+                          } text-xs font-mono`}>
+                            {itm.label}
+                          </span>
+                          <span className={`min-w-[32px] h-6 px-2 flex items-center justify-center rounded border text-xs font-bold font-mono ${
+                            !itm.isRevealed
+                              ? 'bg-slate-900 border-slate-800 text-slate-600 font-mono'
+                              : isSpecial
+                              ? 'bg-slate-800 border-indigo-500/50 text-indigo-200'
+                              : itm.isRoot
+                              ? 'bg-amber-950/70 border-amber-500/40 text-amber-200'
+                              : 'bg-slate-900 border-slate-700 text-slate-200'
+                          }`}>
+                            {itm.isRevealed ? itm.note : '?'}
+                          </span>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+              );
+            })()}
+
+            {/* Clean Interval Scheme without Notes */}
+            {breakdown.steps.length > 0 && (
+              <div className="w-full text-center pt-1">
+                <div className="inline-flex flex-wrap items-center justify-center gap-1.5 px-3 py-1 rounded-lg bg-slate-950/80 border border-slate-800 text-xs font-mono font-bold shadow-inner">
+                  {breakdown.steps.map((st, sIdx) => {
+                    const isStepRevealed = effectiveStepCount >= sIdx + 2;
+                    return (
+                      <React.Fragment key={sIdx}>
+                        {sIdx > 0 && <span className="text-slate-600">+</span>}
+                        <span className={isStepRevealed ? 'text-emerald-400' : 'text-slate-600'}>
+                          {isStepRevealed ? st.intervalName : '?'}
+                        </span>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };
+
 

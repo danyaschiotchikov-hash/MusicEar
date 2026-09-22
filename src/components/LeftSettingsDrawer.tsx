@@ -3,11 +3,9 @@ import {
   PlaybackSettings,
   CategoryId,
   TimbreType,
-  PlaybackStyle,
-  PlaybackDirection,
   AppStats,
 } from '../types';
-import { CATEGORIES, ALL_ITEMS, NOTE_NAMES, NOTE_NAMES_RU } from '../data/musicData';
+import { ALL_ITEMS } from '../data/musicData';
 import { downloadStandaloneHtmlFile } from '../utils/exportHtml';
 import {
   X,
@@ -16,26 +14,22 @@ import {
   Volume2,
   Loader2,
   RotateCcw,
-  Music2,
   Layers,
-  Activity,
-  Zap,
+  Sparkles,
   ChevronDown,
   ChevronRight,
-  CheckSquare,
-  Square,
   Check,
   Download,
-  CheckCheck,
   SlidersHorizontal,
   Sun,
   Moon,
   Smartphone,
-  Radio,
   BookOpen,
   BarChart3,
   CheckCircle2,
   XCircle,
+  FileCheck2,
+  History,
 } from 'lucide-react';
 
 interface LeftSettingsDrawerProps {
@@ -54,6 +48,8 @@ interface LeftSettingsDrawerProps {
   onOpenInstallModal?: () => void;
   onOpenCategoryModal?: () => void;
   onOpenProgressionCatalog?: () => void;
+  onOpenChangelogModal?: () => void;
+  onOpenAcademicAuditModal?: () => void;
 }
 
 export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
@@ -62,9 +58,6 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
   settings,
   onSettingsChange,
   activeItemIds,
-  onToggleItem,
-  onSelectAllCategory,
-  onSelectAllGlobal,
   sampleStatus,
   onLoadSamples,
   stats,
@@ -72,34 +65,22 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
   onOpenInstallModal,
   onOpenCategoryModal,
   onOpenProgressionCatalog,
+  onOpenChangelogModal,
+  onOpenAcademicAuditModal,
 }) => {
-  // Accordion sections state
+  // Accordion state
   const [openSections, setOpenSections] = useState<{
     soundParams: boolean;
     progressionParams: boolean;
-    tonalParams: boolean;
-    categories: boolean;
-    export: boolean;
+    toolsAndOffline: boolean;
   }>({
     soundParams: true,
     progressionParams: true,
-    tonalParams: true,
-    categories: true,
-    export: false,
-  });
-
-  // Expanded categories inside the categories section
-  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({
-    simple_intervals: true,
-    triads: true,
+    toolsAndOffline: false,
   });
 
   const toggleSection = (section: keyof typeof openSections) => {
     setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
-  };
-
-  const toggleCatExpand = (catId: string) => {
-    setExpandedCats((prev) => ({ ...prev, [catId]: !prev[catId] }));
   };
 
   const handleTimbreChange = (val: TimbreType) => {
@@ -116,14 +97,16 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
       resonance: 2.0,
       decay: 2.5,
       volume: 0.85,
-      style: 'arpeggio',
-      direction: 'up',
-      rootNote: 'random',
       autoAdvanceOnCorrect: true,
+      spacedRepetitionEnabled: true,
     });
   };
 
   if (!isOpen) return null;
+
+  const totalTested = stats?.totalTested ?? 0;
+  const totalCorrect = stats?.totalCorrect ?? 0;
+  const accuracyPercent = totalTested > 0 ? Math.round((totalCorrect / totalTested) * 100) : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex animate-in fade-in duration-150">
@@ -137,16 +120,16 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
       <div className="relative w-full max-w-sm sm:max-w-md bg-slate-900 border-r border-slate-800 shadow-2xl flex flex-col h-full z-10 animate-in slide-in-from-left duration-200">
         {/* Drawer Header */}
         <div className="flex items-center justify-between p-3.5 sm:p-4 border-b border-slate-800 bg-slate-900/95 sticky top-0 z-10 shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
               <SlidersHorizontal className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-100">
-                Настройки и параметры
+                Настройки приложения
               </h2>
-              <p className="text-[10px] text-slate-400">
-                Выбрано элементов: {activeItemIds.length} из {ALL_ITEMS.length}
+              <p className="text-[11px] text-slate-400">
+                Параметры звучания, гармонии и интерфейса
               </p>
             </div>
           </div>
@@ -159,186 +142,83 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
           </button>
         </div>
 
-        {/* Scrollable Accordion Body */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-xs">
-          {/* Top Categories and Elements Selection Button */}
+        {/* Scrollable Content Body */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5 text-xs">
+          {/* 1. Elements Selection Card */}
           {onOpenCategoryModal && (
-            <button
-              type="button"
-              onClick={() => {
-                onOpenCategoryModal();
-                onClose();
-              }}
-              className="w-full px-3.5 py-3 bg-indigo-600/25 hover:bg-indigo-600/35 text-indigo-200 hover:text-white border border-indigo-500/50 rounded-xl transition cursor-pointer text-xs font-bold flex items-center justify-center gap-2 shrink-0 shadow-md active:scale-98 whitespace-nowrap"
-            >
-              <SlidersHorizontal className="w-4 h-4 text-indigo-400" />
-              <span>Категории и элементы ({activeItemIds.length})</span>
-            </button>
-          )}
-
-          {/* Statistics Progress & Summary Section */}
-          {stats && (
-            <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 p-3 flex flex-col gap-2.5 shadow-sm">
+            <div className="bg-slate-950/60 rounded-xl border border-indigo-500/30 p-3 flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-200 flex items-center gap-1.5">
-                  <BarChart3 className="w-4 h-4 text-indigo-400" />
-                  <span>Статистика тренировки</span>
-                </span>
-                <span className="text-[11px] font-mono text-indigo-300 font-bold">
-                  {stats.totalTested > 0
-                    ? `${Math.round((stats.totalCorrect / stats.totalTested) * 100)}%`
-                    : '0%'}
-                </span>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
-                <div
-                  className={`h-full transition-all duration-300 ${
-                    stats.totalTested > 0
-                      ? Math.round((stats.totalCorrect / stats.totalTested) * 100) >= 80
-                        ? 'bg-emerald-500'
-                        : Math.round((stats.totalCorrect / stats.totalTested) * 100) >= 50
-                        ? 'bg-amber-500'
-                        : 'bg-rose-500'
-                      : 'bg-slate-800'
-                  }`}
-                  style={{
-                    width: `${
-                      stats.totalTested > 0
-                        ? Math.round((stats.totalCorrect / stats.totalTested) * 100)
-                        : 0
-                    }%`,
-                  }}
-                />
-              </div>
-
-              {/* Counter badges */}
-              <div className="flex items-center justify-between text-[11px] font-mono pt-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-emerald-400 flex items-center gap-0.5 font-bold">
-                    <CheckCircle2 className="w-3 h-3" />
-                    {stats.totalCorrect} верно
+                <div>
+                  <span className="font-bold text-slate-100 block text-xs">
+                    Библиотека созвучий
                   </span>
-                  <span className="text-rose-400 flex items-center gap-0.5 font-bold">
-                    <XCircle className="w-3 h-3" />
-                    {Math.max(0, stats.totalTested - stats.totalCorrect)} ошибок
+                  <span className="text-[11px] text-slate-400">
+                    Интервалы, аккорды, ступени и лады
                   </span>
                 </div>
-                <span className="text-slate-400">Всего: {stats.totalTested}</span>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono text-[11px] font-bold border border-indigo-500/30">
+                  {activeItemIds.length} / {ALL_ITEMS.length}
+                </span>
               </div>
-
-              {/* Action Button: Open Detailed Stats Modal */}
-              {onOpenStatsModal && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenStatsModal();
-                    onClose();
-                  }}
-                  className="w-full mt-1 py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-indigo-300 hover:text-indigo-200 border border-slate-700/80 text-[11px] font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Открыть полный отчёт</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenCategoryModal();
+                  onClose();
+                }}
+                className="w-full mt-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-semibold rounded-lg transition cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Настроить элементы тренировки</span>
+              </button>
             </div>
           )}
 
-          {/* Theme Selector Section */}
+          {/* 2. Theme Selector Section */}
           <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 p-2.5 sm:p-3 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-slate-200 flex items-center gap-1.5 text-xs">
-                {settings.theme === 'dark' || !settings.theme ? (
-                  <Moon className="w-4 h-4 text-indigo-400" />
-                ) : (
+                {settings.theme === 'light' ? (
                   <Sun className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Moon className="w-4 h-4 text-indigo-400" />
                 )}
                 <span>Тема оформления</span>
               </span>
               <span className="text-[10px] font-medium text-slate-400">
-                {settings.theme === 'dark' || !settings.theme
-                  ? 'Тёмная'
-                  : settings.theme === 'light_slate'
-                  ? 'Мягкий Slate'
-                  : settings.theme === 'light_sand'
-                  ? 'Песочная'
-                  : 'Тёплая бумага'}
+                {settings.theme === 'light' ? 'Светлая (Бумага)' : 'Studio Dark'}
               </span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-              {/* Dark */}
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               <button
                 type="button"
                 onClick={() => onSettingsChange({ theme: 'dark' })}
-                className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition cursor-pointer gap-1 ${
-                  settings.theme === 'dark' || !settings.theme
-                    ? 'bg-indigo-950/80 border-indigo-500 text-indigo-200 font-bold ring-1 ring-indigo-500/60 shadow-sm'
-                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                  settings.theme !== 'light'
+                    ? 'bg-slate-800 text-slate-100 border-slate-700 shadow-xs'
+                    : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
                 }`}
-                title="Глубокая тёмная тема"
               >
-                <div className="w-4 h-4 rounded-full bg-slate-950 border border-slate-700 shadow-inner flex items-center justify-center">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-                </div>
-                <span className="text-[10px] font-medium leading-tight">🌌 Тёмная</span>
+                <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Studio Dark</span>
               </button>
-
-              {/* Warm Paper */}
               <button
                 type="button"
-                onClick={() => onSettingsChange({ theme: 'light_warm' })}
-                className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition cursor-pointer gap-1 ${
-                  settings.theme === 'light_warm' || settings.theme === 'light'
-                    ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold ring-1 ring-amber-500/60 shadow-sm'
-                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                onClick={() => onSettingsChange({ theme: 'light' })}
+                className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                  settings.theme === 'light'
+                    ? 'bg-slate-800 text-slate-100 border-slate-700 shadow-xs'
+                    : 'bg-slate-950/70 text-slate-400 border-slate-800 hover:text-slate-200'
                 }`}
-                title="Тёплый кремовый оттенок бумаги"
               >
-                <div className="w-4 h-4 rounded-full bg-[#f7f5ee] border border-[#dcd6c5] shadow-inner flex items-center justify-center">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
-                </div>
-                <span className="text-[10px] font-medium leading-tight">📜 Тёплая бумага</span>
-              </button>
-
-              {/* Soft Slate */}
-              <button
-                type="button"
-                onClick={() => onSettingsChange({ theme: 'light_slate' })}
-                className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition cursor-pointer gap-1 ${
-                  settings.theme === 'light_slate'
-                    ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300 font-bold ring-1 ring-indigo-500/60 shadow-sm'
-                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
-                }`}
-                title="Современный дымчато-серый оттенок"
-              >
-                <div className="w-4 h-4 rounded-full bg-[#f1f5f9] border border-[#cbd5e1] shadow-inner flex items-center justify-center">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-700" />
-                </div>
-                <span className="text-[10px] font-medium leading-tight">🏛️ Мягкий Slate</span>
-              </button>
-
-              {/* Sand Linen */}
-              <button
-                type="button"
-                onClick={() => onSettingsChange({ theme: 'light_sand' })}
-                className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition cursor-pointer gap-1 ${
-                  settings.theme === 'light_sand'
-                    ? 'bg-amber-600/20 border-amber-600 text-amber-200 font-bold ring-1 ring-amber-600/60 shadow-sm'
-                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
-                }`}
-                title="Натуральный льняно-песочный оттенок"
-              >
-                <div className="w-4 h-4 rounded-full bg-[#f4f1e6] border border-[#ded7c4] shadow-inner flex items-center justify-center">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-800" />
-                </div>
-                <span className="text-[10px] font-medium leading-tight">🏖️ Песочная</span>
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <span>Светлая</span>
               </button>
             </div>
           </div>
 
-          {/* 1. Sound Parameters Section */}
+          {/* 3. Sound & Playback Section */}
           <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 overflow-hidden">
             <button
               onClick={() => toggleSection('soundParams')}
@@ -346,7 +226,7 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-indigo-400" />
-                <span>Звук и темп</span>
+                <span>Звук и воспроизведение</span>
               </div>
               {openSections.soundParams ? (
                 <ChevronDown className="w-4 h-4 text-slate-400" />
@@ -356,16 +236,16 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
             </button>
 
             {openSections.soundParams && (
-              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-3 pt-2">
-                {/* Timbre */}
+              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-3 pt-2.5">
+                {/* Timbre selector */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-slate-300 font-medium flex items-center gap-1">
                       <Music className="w-3.5 h-3.5 text-indigo-400" />
-                      Тембр
+                      Тембр инструмента
                     </span>
                     {sampleStatus.isLoading && (
-                      <span className="text-[10px] text-amber-400 flex items-center gap-1 animate-pulse">
+                      <span className="text-[10px] text-amber-400 flex items-center gap-1 animate-pulse font-mono">
                         <Loader2 className="w-3 h-3 animate-spin" />
                         {sampleStatus.progress}%
                       </span>
@@ -378,11 +258,11 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                       className={`p-2 rounded-lg border text-left transition cursor-pointer ${
                         settings.timbre === 'salamander'
                           ? 'bg-indigo-600/20 border-indigo-500/60 text-indigo-100 font-bold'
-                          : 'bg-slate-900 border-slate-800 text-slate-400'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
                       }`}
                     >
                       <span className="block text-[11px]">🎼 Рояль Yamaha</span>
-                      <span className="text-[9px] text-slate-500">Salamander HQ</span>
+                      <span className="text-[9px] text-slate-500">Salamander Grand HQ</span>
                     </button>
                     <button
                       type="button"
@@ -390,7 +270,7 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                       className={`p-2 rounded-lg border text-left transition cursor-pointer ${
                         settings.timbre === 'triangle'
                           ? 'bg-indigo-600/20 border-indigo-500/60 text-indigo-100 font-bold'
-                          : 'bg-slate-900 border-slate-800 text-slate-400'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
                       }`}
                     >
                       <span className="block text-[11px]">🎹 Синтезатор</span>
@@ -399,13 +279,15 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                   </div>
                 </div>
 
-                {/* Sliders: Tempo, Resonance, Decay, Volume */}
+                {/* Sliders: Tempo, Volume, Resonance, Decay */}
                 <div className="space-y-2.5 pt-1">
                   {/* Tempo */}
                   <div className="space-y-1">
                     <div className="flex justify-between items-center text-slate-300 text-[11px]">
-                      <span>⏱️ Темп</span>
-                      <span className="font-mono text-indigo-400 font-bold">{settings.tempo.toFixed(2)}x</span>
+                      <span>⏱️ Темп воспроизведения</span>
+                      <span className="font-mono text-indigo-400 font-bold bg-indigo-950/60 px-1.5 py-0.5 rounded">
+                        {settings.tempo.toFixed(2)}x
+                      </span>
                     </div>
                     <input
                       type="range"
@@ -416,40 +298,11 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                       onChange={(e) => onSettingsChange({ tempo: parseFloat(e.target.value) })}
                       className="w-full cursor-pointer accent-indigo-500 h-1.5"
                     />
-                  </div>
-
-                  {/* Resonance */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center text-slate-300 text-[11px]">
-                      <span>🌊 Наслоение / Резонанс</span>
-                      <span className="font-mono text-cyan-400 font-bold">{settings.resonance.toFixed(2)}</span>
+                    <div className="flex justify-between text-[9px] text-slate-500">
+                      <span>0.2x Медленно</span>
+                      <span>1.0x Норма</span>
+                      <span>1.8x Быстро</span>
                     </div>
-                    <input
-                      type="range"
-                      min="0.0"
-                      max="2.0"
-                      step="0.05"
-                      value={settings.resonance}
-                      onChange={(e) => onSettingsChange({ resonance: parseFloat(e.target.value) })}
-                      className="w-full cursor-pointer accent-cyan-500 h-1.5"
-                    />
-                  </div>
-
-                  {/* Decay */}
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center text-slate-300 text-[11px]">
-                      <span>📉 Длина хвоста (затухание)</span>
-                      <span className="font-mono text-violet-400 font-bold">{settings.decay.toFixed(2)}s</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.2"
-                      max="3.0"
-                      step="0.05"
-                      value={settings.decay}
-                      onChange={(e) => onSettingsChange({ decay: parseFloat(e.target.value) })}
-                      className="w-full cursor-pointer accent-violet-500 h-1.5"
-                    />
                   </div>
 
                   {/* Volume */}
@@ -457,9 +310,11 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                     <div className="flex justify-between items-center text-slate-300 text-[11px]">
                       <span className="flex items-center gap-1">
                         <Volume2 className="w-3 h-3 text-emerald-400" />
-                        Громкость
+                        Громкость звука
                       </span>
-                      <span className="font-mono text-emerald-400 font-bold">{Math.round(settings.volume * 100)}%</span>
+                      <span className="font-mono text-emerald-400 font-bold bg-emerald-950/60 px-1.5 py-0.5 rounded">
+                        {Math.round(settings.volume * 100)}%
+                      </span>
                     </div>
                     <input
                       type="range"
@@ -472,21 +327,85 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                     />
                   </div>
 
+                  {/* Resonance / Overlap */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                      <span>🌊 Наслоение звуков (педаль)</span>
+                      <span className="font-mono text-cyan-400 font-bold bg-cyan-950/60 px-1.5 py-0.5 rounded">
+                        {settings.resonance.toFixed(2)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.0"
+                      max="2.0"
+                      step="0.05"
+                      value={settings.resonance}
+                      onChange={(e) => onSettingsChange({ resonance: parseFloat(e.target.value) })}
+                      className="w-full cursor-pointer accent-cyan-500 h-1.5"
+                    />
+                    <div className="flex justify-between text-[9px] text-slate-500">
+                      <span>0.0 Сухо</span>
+                      <span>1.0 Умеренно</span>
+                      <span>2.0 Шлейф</span>
+                    </div>
+                  </div>
+
+                  {/* Decay */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-slate-300 text-[11px]">
+                      <span>📉 Длина затухания</span>
+                      <span className="font-mono text-violet-400 font-bold bg-violet-950/60 px-1.5 py-0.5 rounded">
+                        {settings.decay.toFixed(2)}s
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.2"
+                      max="3.0"
+                      step="0.05"
+                      value={settings.decay}
+                      onChange={(e) => onSettingsChange({ decay: parseFloat(e.target.value) })}
+                      className="w-full cursor-pointer accent-violet-500 h-1.5"
+                    />
+                  </div>
+
                   {/* Auto-advance on correct answer */}
                   <div className="pt-2 pb-1 border-t border-slate-800/60">
                     <label className="flex items-center justify-between cursor-pointer gap-2 select-none group">
                       <div className="space-y-0.5">
                         <span className="text-slate-200 font-semibold text-xs block group-hover:text-indigo-300 transition">
-                          Играть новый сразу при верном ответе
+                          Играть следующий при верном ответе
                         </span>
                         <span className="text-slate-400 text-[10px] block">
-                          Автоматически запускать следующий звук при успехе
+                          Автоматически запускать новое созвучие при успехе
                         </span>
                       </div>
                       <input
                         type="checkbox"
                         checked={settings.autoAdvanceOnCorrect ?? true}
                         onChange={(e) => onSettingsChange({ autoAdvanceOnCorrect: e.target.checked })}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900 cursor-pointer accent-indigo-600 shrink-0"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Spaced Repetition (Умный повтор) */}
+                  <div className="pt-2 pb-1 border-t border-slate-800/60">
+                    <label className="flex items-center justify-between cursor-pointer gap-2 select-none group">
+                      <div className="space-y-0.5">
+                        <span className="text-slate-200 font-semibold text-xs flex items-center gap-1.5 group-hover:text-indigo-300 transition">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          Умный интервальный повтор (SRS)
+                        </span>
+                        <span className="text-slate-400 text-[10px] block">
+                          Чаще предлагает элементы с ошибками, закрепляя слабые места
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={settings.spacedRepetitionEnabled ?? true}
+                        onChange={(e) => onSettingsChange({ spacedRepetitionEnabled: e.target.checked })}
                         className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-slate-900 cursor-pointer accent-indigo-600 shrink-0"
                       />
                     </label>
@@ -499,14 +418,14 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                     className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 transition cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    <span>Сбросить по умолчанию</span>
+                    <span>Сбросить звук по умолчанию</span>
                   </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* 2. Harmonic Progressions & Notation Section */}
+          {/* 4. Harmonic Progressions & Notation Section */}
           <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 overflow-hidden">
             <button
               onClick={() => toggleSection('progressionParams')}
@@ -524,7 +443,7 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
             </button>
 
             {openSections.progressionParams && (
-              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-3 pt-2">
+              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-3 pt-2.5">
                 {/* Notation Mode Selector */}
                 <div className="space-y-1.5">
                   <span className="text-slate-300 font-medium block text-xs">
@@ -541,8 +460,8 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                       }`}
                     >
                       <div>
-                        <span className="block text-xs font-semibold">Ступени: I, IV, V, I6/4 (По умолчанию)</span>
-                        <span className="text-[10px] text-slate-400">Римская ступенная нотация</span>
+                        <span className="block text-xs font-semibold">Ступени: I, IV, V, I₆/₄</span>
+                        <span className="text-[10px] text-slate-400">Римская ступенная нотация (стандарт училищ)</span>
                       </div>
                       {(settings.progressionNotation ?? 'roman') === 'roman' && (
                         <Check className="w-4 h-4 text-indigo-400 shrink-0" />
@@ -559,7 +478,7 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
                       }`}
                     >
                       <div>
-                        <span className="block text-xs font-semibold">Функции: T, S, D, K6/4</span>
+                        <span className="block text-xs font-semibold">Функции: T, S, D, K₆/₄</span>
                         <span className="text-[10px] text-slate-400">Аналитическая функциональная гармония</span>
                       </div>
                       {settings.progressionNotation === 'analytical' && (
@@ -605,57 +524,188 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
             )}
           </div>
 
-          {/* 4. Standalone Export Section */}
+          {/* 5. Statistics Summary Card */}
+          {stats && (
+            <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 p-3 flex flex-col gap-2.5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                  <BarChart3 className="w-4 h-4 text-indigo-400" />
+                  <span>Статистика тренировки</span>
+                </span>
+                <span className="text-[11px] font-mono text-indigo-300 font-bold">
+                  {accuracyPercent}%
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    totalTested > 0
+                      ? accuracyPercent >= 80
+                        ? 'bg-emerald-500'
+                        : accuracyPercent >= 50
+                        ? 'bg-amber-500'
+                        : 'bg-rose-500'
+                      : 'bg-slate-800'
+                  }`}
+                  style={{
+                    width: `${totalTested > 0 ? accuracyPercent : 0}%`,
+                  }}
+                />
+              </div>
+
+              {/* Counter badges */}
+              <div className="flex items-center justify-between text-[11px] font-mono pt-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400 flex items-center gap-0.5 font-bold">
+                    <CheckCircle2 className="w-3 h-3" />
+                    {totalCorrect} верно
+                  </span>
+                  <span className="text-rose-400 flex items-center gap-0.5 font-bold">
+                    <XCircle className="w-3 h-3" />
+                    {Math.max(0, totalTested - totalCorrect)} ошибок
+                  </span>
+                </div>
+                <span className="text-slate-400">Всего: {totalTested}</span>
+              </div>
+
+              {/* Action Button: Open Detailed Stats Modal */}
+              {onOpenStatsModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenStatsModal();
+                    onClose();
+                  }}
+                  className="w-full mt-1 py-1.5 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-indigo-300 hover:text-indigo-200 border border-slate-700/80 text-[11px] font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <BarChart3 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Открыть полный отчёт</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* 6. Tools, Offline and Academic Section */}
           <div className="bg-slate-950/60 rounded-xl border border-slate-800/80 overflow-hidden">
             <button
-              onClick={() => toggleSection('export')}
+              onClick={() => toggleSection('toolsAndOffline')}
               className="w-full flex items-center justify-between p-3 text-left font-semibold text-slate-200 hover:bg-slate-900/60 transition cursor-pointer"
             >
               <div className="flex items-center gap-2">
                 <Download className="w-4 h-4 text-sky-400" />
-                <span>Экспорт и PWA</span>
+                <span>Инструменты и офлайн</span>
               </div>
-              {openSections.export ? (
+              {openSections.toolsAndOffline ? (
                 <ChevronDown className="w-4 h-4 text-slate-400" />
               ) : (
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               )}
             </button>
 
-            {openSections.export && (
-              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-2.5 pt-2">
+            {openSections.toolsAndOffline && (
+              <div className="p-3 pt-0 border-t border-slate-800/50 space-y-2.5 pt-2.5">
                 {/* PWA Phone Install */}
                 {onOpenInstallModal && (
-                  <div className="p-2.5 rounded-lg bg-indigo-950/60 border border-indigo-500/40 space-y-1.5">
-                    <div className="flex items-center gap-1.5 text-indigo-300 font-bold">
-                      <Smartphone className="w-3.5 h-3.5" />
-                      <span>Установка на телефон (PWA)</span>
+                  <button
+                    onClick={() => {
+                      onClose();
+                      onOpenInstallModal();
+                    }}
+                    className="w-full p-2.5 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/50 border border-indigo-500/30 text-left transition cursor-pointer flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400">
+                        <Smartphone className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-200 text-xs block group-hover:text-indigo-300">
+                          Установка PWA на телефон
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Работает офлайн как отдельное приложение
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-slate-400 leading-tight">
-                      Добавьте как приложение на главный экран. Работает офлайн без интернета.
-                    </p>
-                    <button
-                      onClick={() => {
-                        onClose();
-                        onOpenInstallModal();
-                      }}
-                      className="w-full py-1.5 px-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-semibold rounded-md shadow-sm transition text-center cursor-pointer"
-                    >
-                      Установить приложение
-                    </button>
-                  </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300" />
+                  </button>
                 )}
 
-                <p className="text-[11px] text-slate-400 leading-snug">
-                  Или скачайте приложение одним HTML-файлом:
-                </p>
+                {/* Standalone HTML download */}
                 <button
                   onClick={downloadStandaloneHtmlFile}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 bg-slate-800 hover:bg-slate-750 active:scale-95 text-slate-200 border border-slate-700 font-semibold rounded-lg shadow-sm transition cursor-pointer"
+                  className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left transition cursor-pointer flex items-center justify-between group"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Скачать .html файл</span>
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 rounded-lg bg-sky-500/20 text-sky-400">
+                      <Download className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-200 text-xs block group-hover:text-sky-300">
+                        Скачать автономный .html
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Полная копия для запуска без сервера
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300" />
                 </button>
+
+                {/* Academic Audit Dashboard Modal Button */}
+                {onOpenAcademicAuditModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenAcademicAuditModal();
+                      onClose();
+                    }}
+                    className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left transition cursor-pointer flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                        <FileCheck2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-200 text-xs block group-hover:text-emerald-300">
+                          Академический аудит & авто-солвер
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Верификация теории и голосоведения
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300" />
+                  </button>
+                )}
+
+                {/* Academic Changelog / Corrections Modal Button */}
+                {onOpenChangelogModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenChangelogModal();
+                      onClose();
+                    }}
+                    className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-slate-800 text-left transition cursor-pointer flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                        <History className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-200 text-xs block group-hover:text-amber-300">
+                          Журнал обновлений и исправлений
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          История академических правок
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-slate-300" />
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -668,7 +718,7 @@ export const LeftSettingsDrawer: React.FC<LeftSettingsDrawerProps> = ({
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition cursor-pointer"
+            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-sm"
           >
             Готово
           </button>

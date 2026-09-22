@@ -165,34 +165,147 @@ export const CategorySelectorModal: React.FC<CategorySelectorModalProps> = ({
 
                 {/* Individual Items Grid */}
                 {isExpanded && (
-                  <div className="p-3 grid grid-cols-2 sm:grid-cols-3 gap-1.5 bg-slate-950/40">
-                    {catItems.map((item) => {
-                      const isChecked = activeItemIds.includes(item.id);
-
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => onToggleItem(item.id)}
-                          className={`flex items-center gap-2 p-2 rounded-lg text-left text-xs transition cursor-pointer border ${
-                            isChecked
-                              ? 'bg-indigo-950/80 border-indigo-500/50 text-indigo-200 font-semibold shadow-sm'
-                              : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
-                          }`}
-                        >
-                          <div
-                            className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                              isChecked
-                                ? 'bg-indigo-600 border-indigo-400 text-white'
-                                : 'border-slate-600 bg-slate-950'
-                            }`}
-                          >
-                            {isChecked && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                  <div className="p-3 space-y-2 bg-slate-950/60 border-t border-slate-800/60">
+                    {cat.id === 'scales' || cat.id === 'modes' || cat.id === 'triads' || cat.id === 'seventh_chords' ? (
+                      <>
+                        {/* Major group */}
+                        <div className="space-y-1">
+                          <div className="text-[10px] font-bold text-amber-300 uppercase tracking-wider px-1">
+                            ☀️ Мажорные {cat.id === 'scales' ? 'гаммы' : cat.id === 'modes' ? 'лады' : 'аккорды'}
                           </div>
-                          <span className="truncate">{item.shortName || item.name}</span>
-                        </button>
-                      );
-                    })}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                            {catItems
+                              .filter((item) =>
+                                [
+                                  'scale_nat_maj',
+                                  'scale_harm_maj',
+                                  'scale_mel_maj',
+                                  'scale_double_harm_maj',
+                                  'mode_lydian',
+                                  'mode_mixolydian',
+                                  'mode_pentatonic_maj',
+                                  'triad_maj',
+                                  'triad_maj6',
+                                  'triad_maj64',
+                                  'triad_aug',
+                                  'seventh_mb7',
+                                  'seventh_bb7',
+                                ].includes(item.id)
+                              )
+                              .map((item) => {
+                                const isChecked = activeItemIds.includes(item.id);
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => onToggleItem(item.id)}
+                                    className={`flex items-center gap-2 p-1.5 sm:p-2 rounded-lg text-left text-xs transition cursor-pointer border ${
+                                      isChecked
+                                        ? 'bg-amber-950/60 border-amber-500/50 text-amber-200 font-semibold shadow-sm'
+                                        : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    <div
+                                      className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                                        isChecked
+                                          ? 'bg-amber-600 border-amber-400 text-slate-950 font-bold'
+                                          : 'border-slate-600 bg-slate-950'
+                                      }`}
+                                    >
+                                      {isChecked && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                    </div>
+                                    <span className="truncate">{item.shortName || item.name}</span>
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </div>
+
+                        {/* Minor group */}
+                        <div className="space-y-1 pt-1">
+                          <div className="text-[10px] font-bold text-cyan-300 uppercase tracking-wider px-1">
+                            🌙 Минорные {cat.id === 'scales' ? 'гаммы' : cat.id === 'modes' ? 'лады' : 'аккорды'}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                            {catItems
+                              .filter(
+                                (item) =>
+                                  ![
+                                    'scale_nat_maj',
+                                    'scale_harm_maj',
+                                    'scale_mel_maj',
+                                    'scale_double_harm_maj',
+                                    'mode_lydian',
+                                    'mode_mixolydian',
+                                    'mode_pentatonic_maj',
+                                    'triad_maj',
+                                    'triad_maj6',
+                                    'triad_maj64',
+                                    'triad_aug',
+                                    'seventh_mb7',
+                                    'seventh_bb7',
+                                  ].includes(item.id)
+                              )
+                              .map((item) => {
+                                const isChecked = activeItemIds.includes(item.id);
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => onToggleItem(item.id)}
+                                    className={`flex items-center gap-2 p-1.5 sm:p-2 rounded-lg text-left text-xs transition cursor-pointer border ${
+                                      isChecked
+                                        ? 'bg-cyan-950/60 border-cyan-500/50 text-cyan-200 font-semibold shadow-sm'
+                                        : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    <div
+                                      className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                                        isChecked
+                                          ? 'bg-cyan-600 border-cyan-400 text-slate-950 font-bold'
+                                          : 'border-slate-600 bg-slate-950'
+                                      }`}
+                                    >
+                                      {isChecked && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                    </div>
+                                    <span className="truncate">{item.shortName || item.name}</span>
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        {catItems.map((item) => {
+                          const isChecked = activeItemIds.includes(item.id);
+
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => onToggleItem(item.id)}
+                              className={`flex items-center gap-2 p-2 rounded-lg text-left text-xs transition cursor-pointer border ${
+                                isChecked
+                                  ? 'bg-indigo-950/80 border-indigo-500/50 text-indigo-200 font-semibold shadow-sm'
+                                  : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
+                              }`}
+                            >
+                              <div
+                                className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                                  isChecked
+                                    ? 'bg-indigo-600 border-indigo-400 text-white'
+                                    : 'border-slate-600 bg-slate-950'
+                                }`}
+                              >
+                                {isChecked && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                              </div>
+                              <span className="truncate">{item.shortName || item.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

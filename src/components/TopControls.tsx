@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { PlaybackSettings, TimbreType, PlaybackStyle, PlaybackDirection } from '../types';
 import { NOTE_NAMES, NOTE_NAMES_RU } from '../data/musicData';
-import { Sliders, Volume2, Music, Shuffle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Sliders, Volume2, Music, Shuffle, ChevronDown, ChevronUp, Loader2, Palette } from 'lucide-react';
+import { CARD_PALETTES, CardPaletteId } from '../utils/cardPalettes';
 
 interface TopControlsProps {
   settings: PlaybackSettings;
@@ -26,29 +27,29 @@ export const TopControls: React.FC<TopControlsProps> = ({
   };
 
   return (
-    <div className="w-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-3.5 shadow-xl transition-all">
+    <div className="w-full bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-sm transition-all">
       {/* Top summary row: Always visible */}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs sm:text-sm">
         {/* Timbre selector */}
         <div className="flex items-center gap-2">
           <span className="text-slate-400 font-medium flex items-center gap-1.5">
-            <Music className="w-4 h-4 text-indigo-400" />
+            <Music className="w-3.5 h-3.5 text-slate-400" />
             Тембр:
           </span>
           <div className="relative">
             <select
               value={settings.timbre}
               onChange={(e) => handleTimbreChange(e.target.value as TimbreType)}
-              className="bg-slate-800/90 hover:bg-slate-750 border border-slate-700/80 text-slate-100 rounded-lg px-2.5 py-1.5 font-medium text-xs focus:ring-2 focus:ring-indigo-500/50 outline-none cursor-pointer pr-7"
+              className="bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800 text-slate-200 rounded-md px-2.5 py-1.5 font-medium text-xs focus:ring-1 focus:ring-slate-400 outline-none cursor-pointer pr-7"
             >
-              <option value="triangle">🎹 Пианино (Синтезатор)</option>
+              <option value="triangle">Пианино (Синтезатор)</option>
               <option value="salamander">
-                🎼 HQ Salamander Grand {sampleStatus.isLoading ? `(${sampleStatus.progress}%)` : ''}
+                Salamander Grand HQ {sampleStatus.isLoading ? `(${sampleStatus.progress}%)` : ''}
               </option>
             </select>
           </div>
           {sampleStatus.isLoading && (
-            <div className="flex items-center gap-1 text-[11px] text-amber-400 animate-pulse">
+            <div className="flex items-center gap-1 text-[11px] text-amber-300 animate-pulse">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
               <span>{sampleStatus.progress}%</span>
             </div>
@@ -56,35 +57,35 @@ export const TopControls: React.FC<TopControlsProps> = ({
         </div>
 
         {/* Quick Style & Direction Selectors */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Playback style */}
           <select
             value={settings.style}
             onChange={(e) => onChange({ style: e.target.value as PlaybackStyle })}
-            className="bg-slate-800/90 border border-slate-700/80 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            className="bg-slate-950/70 border border-slate-800 text-slate-200 rounded-md px-2 py-1.5 text-xs font-medium focus:ring-1 focus:ring-slate-400 cursor-pointer"
           >
-            <option value="arpeggio">🎶 Арпеджио</option>
-            <option value="harmonic">🎹 Гармонически</option>
+            <option value="arpeggio">Арпеджио</option>
+            <option value="harmonic">Гармонически</option>
           </select>
 
           {/* Direction */}
           <select
             value={settings.direction}
             onChange={(e) => onChange({ direction: e.target.value as PlaybackDirection })}
-            className="bg-slate-800/90 border border-slate-700/80 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            className="bg-slate-950/70 border border-slate-800 text-slate-200 rounded-md px-2 py-1.5 text-xs font-medium focus:ring-1 focus:ring-slate-400 cursor-pointer"
           >
-            <option value="up">⬆️ Снизу вверх</option>
-            <option value="chain">🔗 Цепочка</option>
-            <option value="down">⬇️ Сверху вниз</option>
+            <option value="up">Снизу вверх</option>
+            <option value="chain">Цепочка</option>
+            <option value="down">Сверху вниз</option>
           </select>
 
           {/* Root Note */}
           <select
             value={settings.rootNote}
             onChange={(e) => onChange({ rootNote: e.target.value })}
-            className="bg-slate-800/90 border border-slate-700/80 text-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            className="bg-slate-950/70 border border-slate-800 text-slate-200 rounded-md px-2 py-1.5 text-xs font-medium focus:ring-1 focus:ring-slate-400 cursor-pointer"
           >
-            <option value="random">🎲 Любой тон</option>
+            <option value="random">Любой тон</option>
             {NOTE_NAMES.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -95,8 +96,8 @@ export const TopControls: React.FC<TopControlsProps> = ({
           {/* Expand sliders button */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg px-2.5 py-1.5 text-xs font-medium transition cursor-pointer"
-            title="Точная настройка звука и темпа"
+            className="flex items-center gap-1 bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/80 rounded-md px-2.5 py-1.5 text-xs font-medium transition cursor-pointer"
+            title="Параметры звука и темпа"
           >
             <Sliders className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Параметры</span>
@@ -107,14 +108,12 @@ export const TopControls: React.FC<TopControlsProps> = ({
 
       {/* Expandable sliders drawer */}
       {isExpanded && (
-        <div className="mt-3.5 pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+        <div className="mt-3 pt-3 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
           {/* Tempo slider */}
-          <div className="flex flex-col gap-1.5 bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
+          <div className="flex flex-col gap-1.5 bg-slate-950/60 p-2.5 rounded-md border border-slate-800/80">
             <div className="flex justify-between items-center text-slate-300">
-              <span className="flex items-center gap-1 font-medium">
-                ⏱️ Темп и Длительность
-              </span>
-              <span className="font-mono text-indigo-400 font-semibold bg-indigo-950/50 px-1.5 py-0.5 rounded text-[11px]">
+              <span className="font-medium">Темп</span>
+              <span className="font-mono text-slate-200 font-semibold bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">
                 {settings.tempo.toFixed(2)}x
               </span>
             </div>
@@ -125,22 +124,20 @@ export const TopControls: React.FC<TopControlsProps> = ({
               step="0.05"
               value={settings.tempo}
               onChange={(e) => onChange({ tempo: parseFloat(e.target.value) })}
-              className="w-full cursor-pointer accent-indigo-500"
+              className="w-full cursor-pointer accent-slate-400"
             />
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>0.2x (Медленно)</span>
+            <div className="flex justify-between text-[10px] text-slate-400">
+              <span>0.2x</span>
               <span>1.0x</span>
-              <span>1.8x (Быстро)</span>
+              <span>1.8x</span>
             </div>
           </div>
 
           {/* Resonance / Overlap slider */}
-          <div className="flex flex-col gap-1.5 bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
+          <div className="flex flex-col gap-1.5 bg-slate-950/60 p-2.5 rounded-md border border-slate-800/80">
             <div className="flex justify-between items-center text-slate-300">
-              <span className="flex items-center gap-1 font-medium">
-                🌊 Наслоение / Резонанс
-              </span>
-              <span className="font-mono text-cyan-400 font-semibold bg-cyan-950/50 px-1.5 py-0.5 rounded text-[11px]">
+              <span className="font-medium">Резонанс</span>
+              <span className="font-mono text-slate-200 font-semibold bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">
                 {settings.resonance.toFixed(2)}
               </span>
             </div>
@@ -151,22 +148,20 @@ export const TopControls: React.FC<TopControlsProps> = ({
               step="0.05"
               value={settings.resonance}
               onChange={(e) => onChange({ resonance: parseFloat(e.target.value) })}
-              className="w-full cursor-pointer accent-cyan-500"
+              className="w-full cursor-pointer accent-slate-400"
             />
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>0.0 (Сухо)</span>
-              <span>0.8 (Стандарт)</span>
-              <span>2.0 (Певчий хвост)</span>
+            <div className="flex justify-between text-[10px] text-slate-400">
+              <span>Сухо</span>
+              <span>Стандарт</span>
+              <span>Шлейф</span>
             </div>
           </div>
 
           {/* Decay slider */}
-          <div className="flex flex-col gap-1.5 bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
+          <div className="flex flex-col gap-1.5 bg-slate-950/60 p-2.5 rounded-md border border-slate-800/80">
             <div className="flex justify-between items-center text-slate-300">
-              <span className="flex items-center gap-1 font-medium">
-                📉 Затухание / Decay
-              </span>
-              <span className="font-mono text-violet-400 font-semibold bg-violet-950/50 px-1.5 py-0.5 rounded text-[11px]">
+              <span className="font-medium">Затухание</span>
+              <span className="font-mono text-slate-200 font-semibold bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">
                 {settings.decay.toFixed(2)}s
               </span>
             </div>
@@ -177,23 +172,23 @@ export const TopControls: React.FC<TopControlsProps> = ({
               step="0.05"
               value={settings.decay}
               onChange={(e) => onChange({ decay: parseFloat(e.target.value) })}
-              className="w-full cursor-pointer accent-violet-500"
+              className="w-full cursor-pointer accent-slate-400"
             />
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>0.2s (Стаккато)</span>
+            <div className="flex justify-between text-[10px] text-slate-400">
+              <span>0.2s</span>
               <span>1.0s</span>
-              <span>3.0s (Долго)</span>
+              <span>3.0s</span>
             </div>
           </div>
 
           {/* Volume slider */}
-          <div className="flex flex-col gap-1.5 bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
+          <div className="flex flex-col gap-1.5 bg-slate-950/60 p-2.5 rounded-md border border-slate-800/80">
             <div className="flex justify-between items-center text-slate-300">
-              <span className="flex items-center gap-1 font-medium">
-                <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-medium flex items-center gap-1">
+                <Volume2 className="w-3.5 h-3.5 text-slate-400" />
                 Громкость
               </span>
-              <span className="font-mono text-emerald-400 font-semibold bg-emerald-950/50 px-1.5 py-0.5 rounded text-[11px]">
+              <span className="font-mono text-slate-200 font-semibold bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">
                 {Math.round(settings.volume * 100)}%
               </span>
             </div>
@@ -204,12 +199,44 @@ export const TopControls: React.FC<TopControlsProps> = ({
               step="0.05"
               value={settings.volume}
               onChange={(e) => onChange({ volume: parseFloat(e.target.value) })}
-              className="w-full cursor-pointer accent-emerald-500"
+              className="w-full cursor-pointer accent-slate-400"
             />
-            <div className="flex justify-between text-[10px] text-slate-500">
+            <div className="flex justify-between text-[10px] text-slate-400">
               <span>0%</span>
               <span>50%</span>
               <span>100%</span>
+            </div>
+          </div>
+
+          {/* Card Color Palette Selector */}
+          <div className="flex flex-col gap-1.5 bg-slate-950/60 p-2.5 rounded-md border border-slate-800/80 sm:col-span-2 lg:col-span-4">
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="font-medium flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-indigo-400" />
+                Палитра карточек и ответов
+              </span>
+              <span className="text-[11px] font-mono text-indigo-300">
+                {CARD_PALETTES.find((p) => p.id === (settings.cardPalette || 'indigo'))?.name}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              {CARD_PALETTES.map((palette) => {
+                const isSelected = (settings.cardPalette || 'indigo') === palette.id;
+                return (
+                  <button
+                    key={palette.id}
+                    type="button"
+                    onClick={() => onChange({ cardPalette: palette.id })}
+                    className={`px-3 py-2 rounded-lg border text-xs font-semibold flex items-center justify-center gap-2 transition cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
+                        : 'bg-slate-900/80 text-slate-300 border-slate-800 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>{palette.name}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

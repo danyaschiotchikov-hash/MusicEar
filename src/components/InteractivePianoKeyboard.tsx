@@ -107,7 +107,7 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
                 (revealed ? activePlayingMidis.includes(k.midi) : (isBase && activePlayingMidis.includes(k.midi)));
               const role = chordNoteRoles[k.midi];
 
-              let keyStyle = 'bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200';
+              let keyStyle = 'piano-white-key bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200';
               if (isPlaying) {
                 keyStyle = 'bg-indigo-500 text-white border-indigo-400 shadow-lg shadow-indigo-500/50 ring-2 ring-indigo-300 z-10 font-black';
               } else if (isBase && isChord) {
@@ -124,7 +124,7 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
                   type="button"
                   onMouseDown={(e) => handleKeyTouch(k.midi, e)}
                   onTouchStart={(e) => handleKeyTouch(k.midi, e)}
-                  className={`flex-1 h-full rounded-b-lg border-r last:border-r-0 flex flex-col justify-end pb-2 items-center transition-all active:scale-[0.98] cursor-pointer relative shadow-sm ${keyStyle}`}
+                  className={`piano-white-key flex-1 h-full rounded-b-lg border-r last:border-r-0 flex flex-col justify-end pb-2 items-center transition-all active:scale-[0.98] cursor-pointer relative shadow-sm ${keyStyle}`}
                   title={`${k.noteName}${k.octave} (${k.labelRu})`}
                 />
               );
@@ -146,7 +146,7 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
                 pressedMidi === bKey.midi ||
                 (revealed ? activePlayingMidis.includes(bKey.midi) : (isBase && activePlayingMidis.includes(bKey.midi)));
 
-              let keyStyle = 'bg-slate-900 border-slate-700 hover:bg-slate-800';
+              let keyStyle = 'piano-black-key bg-slate-900 border-slate-700 hover:bg-slate-800';
               if (isPlaying) {
                 keyStyle = 'bg-indigo-500 border-indigo-300 shadow-xl shadow-indigo-500/60 ring-2 ring-indigo-200 z-20';
               } else if (isBase && isChord) {
@@ -163,7 +163,7 @@ export const InteractivePianoKeyboard: React.FC<InteractivePianoKeyboardProps> =
                     type="button"
                     onMouseDown={(e) => handleKeyTouch(bKey.midi, e)}
                     onTouchStart={(e) => handleKeyTouch(bKey.midi, e)}
-                    className={`absolute top-0 -right-[32%] sm:-right-[35%] w-[64%] sm:w-[70%] h-full rounded-b-md border shadow-lg flex flex-col justify-end pb-2 items-center transition-all active:scale-[0.98] cursor-pointer pointer-events-auto z-10 ${keyStyle}`}
+                    className={`piano-black-key absolute top-0 -right-[32%] sm:-right-[35%] w-[64%] sm:w-[70%] h-full rounded-b-md border shadow-lg flex flex-col justify-end pb-2 items-center transition-all active:scale-[0.98] cursor-pointer pointer-events-auto z-10 ${keyStyle}`}
                     title={`${bKey.noteName}${bKey.octave}`}
                   />
                 </div>

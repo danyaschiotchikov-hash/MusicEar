@@ -1,6 +1,7 @@
 import { MusicItem, PlaybackSettings } from '../types';
 import { calculateItemNotes } from './solfegeHelper';
 import { RealizedProgression } from './harmonicProgressions';
+import { getSampleFromDB, saveSampleToDB } from '../utils/sampleCache';
 
 export interface SalamanderAnchor {
   note: string;
@@ -8,21 +9,25 @@ export interface SalamanderAnchor {
   url: string;
 }
 
-// 13 Salamander Grand piano anchors
+// 17 Salamander Grand piano anchors (spanning full practical ear-training range up to C6)
 export const SALAMANDER_ANCHORS: SalamanderAnchor[] = [
   { note: 'C2', midi: 36, url: 'https://tonejs.github.io/audio/salamander/C2.mp3' },
-  { note: 'D#2', midi: 39, url: 'https://tonejs.github.io/audio/salamander/D%232.mp3' },
-  { note: 'F#2', midi: 42, url: 'https://tonejs.github.io/audio/salamander/F%232.mp3' },
+  { note: 'D#2', midi: 39, url: 'https://tonejs.github.io/audio/salamander/Ds2.mp3' },
+  { note: 'F#2', midi: 42, url: 'https://tonejs.github.io/audio/salamander/Fs2.mp3' },
   { note: 'A2', midi: 45, url: 'https://tonejs.github.io/audio/salamander/A2.mp3' },
   { note: 'C3', midi: 48, url: 'https://tonejs.github.io/audio/salamander/C3.mp3' },
-  { note: 'D#3', midi: 51, url: 'https://tonejs.github.io/audio/salamander/D%233.mp3' },
-  { note: 'F#3', midi: 54, url: 'https://tonejs.github.io/audio/salamander/F%233.mp3' },
+  { note: 'D#3', midi: 51, url: 'https://tonejs.github.io/audio/salamander/Ds3.mp3' },
+  { note: 'F#3', midi: 54, url: 'https://tonejs.github.io/audio/salamander/Fs3.mp3' },
   { note: 'A3', midi: 57, url: 'https://tonejs.github.io/audio/salamander/A3.mp3' },
   { note: 'C4', midi: 60, url: 'https://tonejs.github.io/audio/salamander/C4.mp3' },
-  { note: 'D#4', midi: 63, url: 'https://tonejs.github.io/audio/salamander/D%234.mp3' },
-  { note: 'F#4', midi: 66, url: 'https://tonejs.github.io/audio/salamander/F%234.mp3' },
+  { note: 'D#4', midi: 63, url: 'https://tonejs.github.io/audio/salamander/Ds4.mp3' },
+  { note: 'F#4', midi: 66, url: 'https://tonejs.github.io/audio/salamander/Fs4.mp3' },
   { note: 'A4', midi: 69, url: 'https://tonejs.github.io/audio/salamander/A4.mp3' },
   { note: 'C5', midi: 72, url: 'https://tonejs.github.io/audio/salamander/C5.mp3' },
+  { note: 'D#5', midi: 75, url: 'https://tonejs.github.io/audio/salamander/Ds5.mp3' },
+  { note: 'F#5', midi: 78, url: 'https://tonejs.github.io/audio/salamander/Fs5.mp3' },
+  { note: 'A5', midi: 81, url: 'https://tonejs.github.io/audio/salamander/A5.mp3' },
+  { note: 'C6', midi: 84, url: 'https://tonejs.github.io/audio/salamander/C6.mp3' },
 ];
 
 export type NoteEventCallback = (activeMidis: number[]) => void;
@@ -40,6 +45,10 @@ class AudioEngine {
   private droneOsc1: OscillatorNode | null = null;
   private droneOsc2: OscillatorNode | null = null;
   private droneGain: GainNode | null = null;
+  private calibrationOscs: { osc: OscillatorNode; multiplier: number }[] = [];
+  private calibrationGain: GainNode | null = null;
+  private masterGain: GainNode | null = null;
+  private masterCompressor: DynamicsCompressorNode | null = null;
 
   public getContext(): AudioContext {
     if (!this.ctx) {
@@ -50,6 +59,26 @@ class AudioEngine {
       this.ctx.resume();
     }
     return this.ctx;
+  }
+
+  public getMasterDestination(): AudioNode {
+    const ctx = this.getContext();
+    if (!this.masterCompressor || !this.masterGain) {
+      // Studio transparent limiter/compressor preventing digital distortion on loud chords
+      this.masterCompressor = ctx.createDynamicsCompressor();
+      this.masterCompressor.threshold.setValueAtTime(-6, ctx.currentTime);
+      this.masterCompressor.knee.setValueAtTime(12, ctx.currentTime);
+      this.masterCompressor.ratio.setValueAtTime(4, ctx.currentTime);
+      this.masterCompressor.attack.setValueAtTime(0.003, ctx.currentTime);
+      this.masterCompressor.release.setValueAtTime(0.15, ctx.currentTime);
+
+      this.masterGain = ctx.createGain();
+      this.masterGain.gain.setValueAtTime(0.95, ctx.currentTime);
+
+      this.masterCompressor.connect(this.masterGain);
+      this.masterGain.connect(ctx.destination);
+    }
+    return this.masterCompressor;
   }
 
   public setNoteCallback(cb: NoteEventCallback | null) {
@@ -76,7 +105,7 @@ class AudioEngine {
     let cache: Cache | null = null;
     try {
       if (typeof caches !== 'undefined') {
-        cache = await caches.open('salamander-piano-samples-v1');
+        cache = await caches.open('salamander-piano-samples-v2');
       }
     } catch {
       cache = null;
@@ -88,25 +117,43 @@ class AudioEngine {
           try {
             let arrayBuffer: ArrayBuffer | null = null;
 
-            if (cache) {
-              const cachedResp = await cache.match(anchor.url);
-              if (cachedResp) {
-                arrayBuffer = await cachedResp.arrayBuffer();
+            // 1. Try high-performance IndexedDB first
+            try {
+              arrayBuffer = await getSampleFromDB(`sample_${anchor.midi}`);
+            } catch {
+              arrayBuffer = null;
+            }
+
+            // 2. Try CacheStorage if not in IndexedDB
+            if (!arrayBuffer && cache) {
+              try {
+                const cachedResp = await cache.match(anchor.url);
+                if (cachedResp) {
+                  arrayBuffer = await cachedResp.arrayBuffer();
+                  // Backfill to IndexedDB
+                  if (arrayBuffer) {
+                    saveSampleToDB(`sample_${anchor.midi}`, arrayBuffer.slice(0));
+                  }
+                }
+              } catch {
+                // Ignore cache read errors
               }
             }
 
+            // 3. Fetch from network if not cached
             if (!arrayBuffer) {
               const resp = await fetch(anchor.url, { mode: 'cors' });
               if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
               if (cache) {
-                // Clone response to put into cache for future offline usage
                 try {
                   await cache.put(anchor.url, resp.clone());
-                } catch {
-                  // Cache put error ignored
-                }
+                } catch {}
               }
               arrayBuffer = await resp.arrayBuffer();
+              // Persist to IndexedDB for instant offline starts
+              if (arrayBuffer) {
+                saveSampleToDB(`sample_${anchor.midi}`, arrayBuffer.slice(0));
+              }
             }
 
             const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
@@ -140,6 +187,7 @@ class AudioEngine {
 
   public stopAll() {
     this.stopDrone();
+    this.stopCalibrationTone();
     for (const tid of this.activeTimeouts) {
       window.clearTimeout(tid);
     }
@@ -298,7 +346,7 @@ class AudioEngine {
     osc3Gain.connect(filter);
 
     filter.connect(noteGain);
-    noteGain.connect(ctx.destination);
+    noteGain.connect(this.getMasterDestination());
 
     osc1.start(startTime);
     osc2.start(startTime);
@@ -308,7 +356,7 @@ class AudioEngine {
     osc2.stop(stopTime);
     osc3.stop(stopTime);
 
-    this.activeSourceNodes.push({
+    const activeNodeRef = {
       stop: () => {
         try {
           osc1.stop();
@@ -319,7 +367,14 @@ class AudioEngine {
           // ignore
         }
       },
-    });
+    };
+    this.activeSourceNodes.push(activeNodeRef);
+
+    // Auto garbage cleanup when note completes
+    const cleanupMs = Math.max(100, Math.ceil((stopTime - ctx.currentTime) * 1000) + 100);
+    window.setTimeout(() => {
+      this.activeSourceNodes = this.activeSourceNodes.filter((n) => n !== activeNodeRef);
+    }, cleanupMs);
   }
 
   /**
@@ -379,12 +434,12 @@ class AudioEngine {
     }
 
     source.connect(gainNode);
-    gainNode.connect(ctx.destination);
+    gainNode.connect(this.getMasterDestination());
 
     source.start(startTime);
     source.stop(stopTime);
 
-    this.activeSourceNodes.push({
+    const activeNodeRef = {
       stop: () => {
         try {
           source.stop();
@@ -393,7 +448,14 @@ class AudioEngine {
           // ignore
         }
       },
-    });
+    };
+    this.activeSourceNodes.push(activeNodeRef);
+
+    // Auto garbage cleanup when note completes
+    const cleanupMs = Math.max(100, Math.ceil((stopTime - ctx.currentTime) * 1000) + 100);
+    window.setTimeout(() => {
+      this.activeSourceNodes = this.activeSourceNodes.filter((n) => n !== activeNodeRef);
+    }, cleanupMs);
   }
 
   public playSingleNote(
@@ -446,7 +508,7 @@ class AudioEngine {
     osc2.connect(osc2Gain);
     osc2Gain.connect(filter);
     filter.connect(gainNode);
-    gainNode.connect(ctx.destination);
+    gainNode.connect(this.getMasterDestination());
 
     osc1.start(now);
     osc2.start(now);
@@ -486,6 +548,126 @@ class AudioEngine {
 
   public isDroneActive(): boolean {
     return Boolean(this.droneGain);
+  }
+
+  /**
+   * Starts a continuous, real-time responsive tuning oscillator for "Pitch Calibration" with multiple pleasant timbres.
+   */
+  public startCalibrationTone(
+    initialFreq: number = 440,
+    timbre: 'soft_sine' | 'warm_epiano' | 'flute' | 'cello_bow' | 'chamber_organ' = 'soft_sine',
+    volume: number = 0.8
+  ) {
+    this.stopCalibrationTone();
+    const ctx = this.getContext();
+    const now = ctx.currentTime;
+
+    this.calibrationGain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+
+    // Configure timbre harmonics & filter
+    let setup: { type: OscillatorType; multiplier: number; gain: number }[] = [];
+
+    switch (timbre) {
+      case 'warm_epiano':
+        filter.frequency.setValueAtTime(1800, now);
+        setup = [
+          { type: 'triangle', multiplier: 1.0, gain: 0.7 },
+          { type: 'sine', multiplier: 2.0, gain: 0.2 },
+        ];
+        break;
+      case 'flute':
+        filter.frequency.setValueAtTime(1300, now);
+        setup = [
+          { type: 'triangle', multiplier: 1.0, gain: 0.6 },
+          { type: 'sine', multiplier: 1.0, gain: 0.35 },
+        ];
+        break;
+      case 'cello_bow':
+        filter.frequency.setValueAtTime(750, now); // Lowpass removes harshness, leaves warm bowed tone
+        setup = [{ type: 'sawtooth', multiplier: 1.0, gain: 0.65 }];
+        break;
+      case 'chamber_organ':
+        filter.frequency.setValueAtTime(2200, now);
+        setup = [
+          { type: 'triangle', multiplier: 1.0, gain: 0.5 },
+          { type: 'sine', multiplier: 0.5, gain: 0.3 },
+          { type: 'triangle', multiplier: 2.0, gain: 0.15 },
+        ];
+        break;
+      case 'soft_sine':
+      default:
+        filter.frequency.setValueAtTime(1200, now);
+        setup = [{ type: 'sine', multiplier: 1.0, gain: 0.8 }];
+        break;
+    }
+
+    const targetVol = Math.min(0.35, 0.22 * volume);
+    this.calibrationGain.gain.setValueAtTime(0.0001, now);
+    this.calibrationGain.gain.linearRampToValueAtTime(targetVol, now + 0.05);
+
+    filter.connect(this.calibrationGain);
+    this.calibrationGain.connect(this.getMasterDestination());
+
+    this.calibrationOscs = setup.map((item) => {
+      const osc = ctx.createOscillator();
+      const subGain = ctx.createGain();
+
+      osc.type = item.type;
+      osc.frequency.setValueAtTime(initialFreq * item.multiplier, now);
+      subGain.gain.setValueAtTime(item.gain, now);
+
+      osc.connect(subGain);
+      subGain.connect(filter);
+      osc.start(now);
+
+      return { osc, multiplier: item.multiplier };
+    });
+  }
+
+  /**
+   * Instantly updates calibration frequency in real time as the slider moves
+   */
+  public updateCalibrationFrequency(freq: number) {
+    if (this.calibrationOscs.length > 0 && this.ctx) {
+      const now = this.ctx.currentTime;
+      for (const item of this.calibrationOscs) {
+        item.osc.frequency.setTargetAtTime(freq * item.multiplier, now, 0.005);
+      }
+    }
+  }
+
+  /**
+   * Stops the calibration tone
+   */
+  public stopCalibrationTone() {
+    if (this.calibrationGain && this.ctx) {
+      try {
+        const now = this.ctx.currentTime;
+        this.calibrationGain.gain.setValueAtTime(this.calibrationGain.gain.value, now);
+        this.calibrationGain.gain.linearRampToValueAtTime(0.0001, now + 0.05);
+      } catch {}
+    }
+
+    const currentOscs = [...this.calibrationOscs];
+    this.calibrationOscs = [];
+    this.calibrationGain = null;
+
+    if (currentOscs.length > 0) {
+      setTimeout(() => {
+        for (const item of currentOscs) {
+          try {
+            item.osc.stop();
+            item.osc.disconnect();
+          } catch {}
+        }
+      }, 60);
+    }
+  }
+
+  public isCalibrationToneActive(): boolean {
+    return this.calibrationOscs.length > 0;
   }
 
   /**
@@ -887,26 +1069,27 @@ class AudioEngine {
     const ctx = this.getContext();
     const now = ctx.currentTime + 0.01;
 
-    // Pick comfortable tonic in octave 3/4 (MIDI 48..59)
+    // Pick comfortable tonic in middle register (MIDI 52..63, E3..Eb4)
     let t = 48 + (((tonicPitch % 12) + 12) % 12);
-    if (t < 48) t += 12;
-    if (t > 57) t -= 12;
+    if (t < 52) t += 12;
+    if (t > 63) t -= 12;
 
     const isMaj = scaleMode === 'major';
     const third = isMaj ? 4 : 3;
+    const d7Bass = (t + 7) >= 65 ? (t + 7 - 12) : ((t + 7 - 12 >= 48) ? (t + 7 - 12) : (t + 7));
 
     // 1. Dominant Seventh (D7):
-    // Bass on V (t + 7), Tenor on IV (t + 5 + 12), Alto on VII leading tone (t + 11), Soprano on II (t + 14)
+    // Bass on V (d7Bass), Tenor on IV (t + 5), Alto on VII leading tone (t + 11), Soprano on II (t + 14)
     // 2. Tonic Resolution (T / t):
-    // Bass on I (t), Tenor on III (t + 12 + third), Alto on I (t + 12), Soprano on I (t + 24)
+    // Bass on I (t), Tenor on III (t + third), Alto on V (t + 7), Soprano on I (t + 12)
     const chords: { midis: number[]; dur: number; gain: number }[] = [
       {
-        midis: [t + 7 - 12, t + 5, t + 11, t + 14], // Bass V, IV, VII (leading tone), II
+        midis: [d7Bass, t + 5, t + 11, t + 14], // Bass V, IV, VII (leading tone), II
         dur: 0.55,
         gain: 1.25,
       },
       {
-        midis: [t, t + 7, t + 12, t + 12 + third], // Pure resolved tonic
+        midis: [t, t + third, t + 7, t + 12], // Pure resolved tonic in middle register
         dur: 1.1,
         gain: 1.35,
       },
@@ -1081,6 +1264,87 @@ class AudioEngine {
     this.scheduleTimeout(() => {
       if (onFinish) onFinish();
     }, dur * 1000);
+  }
+
+  /**
+   * Plays a melody sequence of raw MIDI numbers
+   */
+  public playMidiSequence(
+    midis: number[],
+    stepDuration: number,
+    settings: PlaybackSettings,
+    onFinish?: () => void
+  ) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime + 0.02;
+
+    midis.forEach((m, idx) => {
+      const startTime = now + idx * stepDuration;
+      const isLast = idx === midis.length - 1;
+      const dur = isLast ? stepDuration * 1.4 : stepDuration;
+      this.playSingleNote(m, startTime, dur, 1.2, settings, true, isLast);
+    });
+
+    const totalMs = (midis.length * stepDuration + 0.3) * 1000;
+    this.scheduleTimeout(() => {
+      if (onFinish) onFinish();
+    }, totalMs);
+  }
+
+  /**
+   * Plays a warm harmonic celebration fanfare when leveling up or setting a new record
+   */
+  public playCelebrationFanfare(settings: PlaybackSettings, onFinish?: () => void) {
+    this.stopAll();
+    const ctx = this.getContext();
+    const now = ctx.currentTime + 0.02;
+    // C Major triumph sequence: C5, E5, G5, C6 (sparkling arpeggio + sustained shimmer)
+    const fanfareMidis = [72, 76, 79, 84];
+    const stepDuration = 0.12;
+
+    fanfareMidis.forEach((m, idx) => {
+      const startTime = now + idx * stepDuration;
+      const isLast = idx === fanfareMidis.length - 1;
+      const dur = isLast ? 1.6 : 0.8;
+      this.playSingleNote(m, startTime, dur, 1.25, settings, true, isLast);
+    });
+
+    const totalMs = (fanfareMidis.length * stepDuration + 1.2) * 1000;
+    this.scheduleTimeout(() => {
+      if (onFinish) onFinish();
+    }, totalMs);
+  }
+
+  /**
+   * Plays chosen item followed by target item with a clear gap for ear-to-ear A/B comparison
+   */
+  public playComparisonSequence(
+    chosenItem: MusicItem,
+    targetItem: MusicItem,
+    rootMidi: number,
+    settings: PlaybackSettings,
+    onVisualNotes?: (midis: number[]) => void,
+    onFinish?: () => void
+  ) {
+    this.stopAll();
+    // 1. Play chosen item
+    this.playItem(chosenItem, rootMidi, settings, onVisualNotes);
+
+    // Calculate approximate duration of chosen item playback
+    const isArp = settings.style === 'arpeggio';
+    const notesCount = Math.max(2, chosenItem.semitones ? chosenItem.semitones.length : 3);
+    const itemDurSec = isArp ? (notesCount * 0.45) / Math.max(0.3, settings.tempo) : 1.4;
+    const gapMs = (itemDurSec + 0.5) * 1000;
+
+    this.scheduleTimeout(() => {
+      // 2. Play target (correct) item
+      this.playItem(targetItem, rootMidi, settings, onVisualNotes);
+      const targetDurSec = isArp ? (notesCount * 0.45) / Math.max(0.3, settings.tempo) : 1.4;
+      this.scheduleTimeout(() => {
+        if (onFinish) onFinish();
+      }, targetDurSec * 1000);
+    }, gapMs);
   }
 }
 

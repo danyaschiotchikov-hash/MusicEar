@@ -1,4 +1,5 @@
 import { CHROMATIC_NOTES_UP } from '../data/musicData';
+import { TonalThemeId } from '../types';
 
 export interface ResolutionSchemeItem {
   toChord: string;
@@ -476,7 +477,679 @@ export const TONAL_DEGREES: TonalDegreeDefinition[] = [
   },
 ];
 
+export interface PopularTonalChordItem {
+  id: string; // e.g. 'v_T53', 'v_T6', 'v_D65'
+  degreeId: string; // e.g. 'deg_I', 'deg_V7'
+  functionGroup: 'T' | 'S' | 'D' | 'M';
+  symbolMajor: string; // e.g. 'T6'
+  symbolMinor: string; // e.g. 't6'
+  symbolRomanMajor: string; // e.g. 'I6'
+  symbolRomanMinor: string; // e.g. 'i6'
+  nameMajorRu: string; // e.g. 'Тонический секстаккорд (T6)'
+  nameMinorRu: string; // e.g. 'Тонический секстаккорд (t6)'
+  inversionTypeRu: string; // e.g. 'Секстаккорд (бас на III ст.)'
+  bassStepRu: string; // 'I ст.', 'III ст.', 'IV ст.', 'V ст.', 'VII ст.'
+  isRootPosition: boolean; // false for inversions, true for 5/3 and 7
+  isPopularInversion: boolean; // true for famous inversions
+}
+
+export const POPULAR_TONAL_CHORDS: PopularTonalChordItem[] = [
+  // 1. Тоника & Каданс (T)
+  {
+    id: 'v_T53',
+    degreeId: 'deg_I',
+    functionGroup: 'T',
+    symbolMajor: 'T5/3',
+    symbolMinor: 't5/3',
+    symbolRomanMajor: 'I5/3',
+    symbolRomanMinor: 'i5/3',
+    nameMajorRu: 'Тоническое трезвучие (T5/3)',
+    nameMinorRu: 'Тоническое трезвучие (t5/3)',
+    inversionTypeRu: 'Основной вид (бас на I ст.)',
+    bassStepRu: 'I ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_T6',
+    degreeId: 'deg_I',
+    functionGroup: 'T',
+    symbolMajor: 'T6',
+    symbolMinor: 't6',
+    symbolRomanMajor: 'I6',
+    symbolRomanMinor: 'i6',
+    nameMajorRu: 'Тонический секстаккорд (T6)',
+    nameMinorRu: 'Тонический секстаккорд (t6)',
+    inversionTypeRu: 'Секстаккорд (бас на III ст.)',
+    bassStepRu: 'III ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_T64',
+    degreeId: 'deg_I',
+    functionGroup: 'T',
+    symbolMajor: 'T6/4',
+    symbolMinor: 't6/4',
+    symbolRomanMajor: 'I6/4',
+    symbolRomanMinor: 'i6/4',
+    nameMajorRu: 'Тонический квартсекстаккорд (T6/4)',
+    nameMinorRu: 'Тонический квартсекстаккорд (t6/4)',
+    inversionTypeRu: 'Квартсекстаккорд (бас на V ст.)',
+    bassStepRu: 'V ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_K64',
+    degreeId: 'deg_K64',
+    functionGroup: 'T',
+    symbolMajor: 'K6/4',
+    symbolMinor: 'k6/4',
+    symbolRomanMajor: 'K6/4',
+    symbolRomanMinor: 'k6/4',
+    nameMajorRu: 'Кадансовый квартсекстаккорд (K6/4)',
+    nameMinorRu: 'Кадансовый квартсекстаккорд (k6/4)',
+    inversionTypeRu: 'Кадансовый оборот (бас на V ст.)',
+    bassStepRu: 'V ст.',
+    isRootPosition: true,
+    isPopularInversion: true,
+  },
+
+  // 2. Субдоминанта (S)
+  {
+    id: 'v_S53',
+    degreeId: 'deg_IV',
+    functionGroup: 'S',
+    symbolMajor: 'S5/3',
+    symbolMinor: 's5/3',
+    symbolRomanMajor: 'IV5/3',
+    symbolRomanMinor: 'iv5/3',
+    nameMajorRu: 'Субдоминантовое трезвучие (S5/3)',
+    nameMinorRu: 'Субдоминантовое трезвучие (s5/3)',
+    inversionTypeRu: 'Основной вид (бас на IV ст.)',
+    bassStepRu: 'IV ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_S6',
+    degreeId: 'deg_IV',
+    functionGroup: 'S',
+    symbolMajor: 'S6',
+    symbolMinor: 's6',
+    symbolRomanMajor: 'IV6',
+    symbolRomanMinor: 'iv6',
+    nameMajorRu: 'Субдоминантовый секстаккорд (S6)',
+    nameMinorRu: 'Субдоминантовый секстаккорд (s6)',
+    inversionTypeRu: 'Секстаккорд (бас на VI ст.)',
+    bassStepRu: 'VI ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_S64',
+    degreeId: 'deg_IV',
+    functionGroup: 'S',
+    symbolMajor: 'S6/4',
+    symbolMinor: 's6/4',
+    symbolRomanMajor: 'IV6/4',
+    symbolRomanMinor: 'iv6/4',
+    nameMajorRu: 'Субдоминантовый квартсекстаккорд (S6/4)',
+    nameMinorRu: 'Субдоминантовый квартсекстаккорд (s6/4)',
+    inversionTypeRu: 'Квартсекстаккорд (бас на I ст.)',
+    bassStepRu: 'I ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_s53',
+    degreeId: 'deg_S_alt',
+    functionGroup: 'S',
+    symbolMajor: 's5/3',
+    symbolMinor: 's5/3',
+    symbolRomanMajor: 'iv5/3',
+    symbolRomanMinor: 'iv5/3',
+    nameMajorRu: 'Гармоническая минорная субдоминанта (s5/3)',
+    nameMinorRu: 'Минорная субдоминанта (s5/3)',
+    inversionTypeRu: 'Основной вид (бас на IV ст.)',
+    bassStepRu: 'IV ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_II53',
+    degreeId: 'deg_II',
+    functionGroup: 'S',
+    symbolMajor: 'II5/3',
+    symbolMinor: 'II°5/3',
+    symbolRomanMajor: 'II5/3',
+    symbolRomanMinor: 'ii°5/3',
+    nameMajorRu: 'Трезвучие II ступени (II5/3)',
+    nameMinorRu: 'Уменьшенное трезвучие II ст. (II°5/3)',
+    inversionTypeRu: 'Основной вид (бас на II ст.)',
+    bassStepRu: 'II ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_II6',
+    degreeId: 'deg_II',
+    functionGroup: 'S',
+    symbolMajor: 'II6',
+    symbolMinor: 'II°6',
+    symbolRomanMajor: 'II6',
+    symbolRomanMinor: 'ii°6',
+    nameMajorRu: 'Секстаккорд II ступени (II6)',
+    nameMinorRu: 'Уменьшенный секстаккорд II ст. (II°6)',
+    inversionTypeRu: 'Секстаккорд (бас на IV ст.)',
+    bassStepRu: 'IV ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_II7',
+    degreeId: 'deg_II7',
+    functionGroup: 'S',
+    symbolMajor: 'II7',
+    symbolMinor: 'IIø7',
+    symbolRomanMajor: 'II7',
+    symbolRomanMinor: 'iiø7',
+    nameMajorRu: 'Септаккорд II ступени (II7)',
+    nameMinorRu: 'Полууменьшенный септаккорд (IIø7)',
+    inversionTypeRu: 'Основной вид (бас на II ст.)',
+    bassStepRu: 'II ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_II65',
+    degreeId: 'deg_II7',
+    functionGroup: 'S',
+    symbolMajor: 'II6/5',
+    symbolMinor: 'IIø6/5',
+    symbolRomanMajor: 'II6/5',
+    symbolRomanMinor: 'iiø6/5',
+    nameMajorRu: 'Квинтсекстаккорд II ступени (II6/5)',
+    nameMinorRu: 'Полууменьшенный квинтсекстаккорд (IIø6/5)',
+    inversionTypeRu: 'Квинтсекстаккорд (бас на IV ст.)',
+    bassStepRu: 'IV ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_II43',
+    degreeId: 'deg_II7',
+    functionGroup: 'S',
+    symbolMajor: 'II4/3',
+    symbolMinor: 'IIø4/3',
+    symbolRomanMajor: 'II4/3',
+    symbolRomanMinor: 'iiø4/3',
+    nameMajorRu: 'Терцквартаккорд II ступени (II4/3)',
+    nameMinorRu: 'Полууменьшенный терцквартаккорд (IIø4/3)',
+    inversionTypeRu: 'Терцквартаккорд (бас на VI ст.)',
+    bassStepRu: 'VI ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_II2',
+    degreeId: 'deg_II7',
+    functionGroup: 'S',
+    symbolMajor: 'II2',
+    symbolMinor: 'IIø2',
+    symbolRomanMajor: 'II2',
+    symbolRomanMinor: 'iiø2',
+    nameMajorRu: 'Секундаккорд II ступени (II2)',
+    nameMinorRu: 'Полууменьшенный секундаккорд (IIø2)',
+    inversionTypeRu: 'Секундаккорд (бас на I ст.)',
+    bassStepRu: 'I ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_N6',
+    degreeId: 'deg_S_alt',
+    functionGroup: 'S',
+    symbolMajor: 'N6',
+    symbolMinor: 'N6',
+    symbolRomanMajor: 'II♭6',
+    symbolRomanMinor: 'II♭6',
+    nameMajorRu: 'Неаполитанский секстаккорд (N6)',
+    nameMinorRu: 'Неаполитанский секстаккорд (N6)',
+    inversionTypeRu: 'Секстаккорд пониженной II ст. (бас IV)',
+    bassStepRu: 'IV ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+
+  // 3. Доминанта (D)
+  {
+    id: 'v_D53',
+    degreeId: 'deg_V',
+    functionGroup: 'D',
+    symbolMajor: 'D5/3',
+    symbolMinor: 'D5/3',
+    symbolRomanMajor: 'V5/3',
+    symbolRomanMinor: 'V5/3',
+    nameMajorRu: 'Доминантовое трезвучие (D5/3)',
+    nameMinorRu: 'Гармоническая доминанта (D5/3)',
+    inversionTypeRu: 'Основной вид (бас на V ст.)',
+    bassStepRu: 'V ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_D6',
+    degreeId: 'deg_V',
+    functionGroup: 'D',
+    symbolMajor: 'D6',
+    symbolMinor: 'D6',
+    symbolRomanMajor: 'V6',
+    symbolRomanMinor: 'V6',
+    nameMajorRu: 'Доминантовый секстаккорд (D6)',
+    nameMinorRu: 'Доминантовый секстаккорд (D6)',
+    inversionTypeRu: 'Секстаккорд (вводный тон VII в басу)',
+    bassStepRu: 'VII ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_D64',
+    degreeId: 'deg_V',
+    functionGroup: 'D',
+    symbolMajor: 'D6/4',
+    symbolMinor: 'D6/4',
+    symbolRomanMajor: 'V6/4',
+    symbolRomanMinor: 'V6/4',
+    nameMajorRu: 'Доминантовый квартсекстаккорд (D6/4)',
+    nameMinorRu: 'Доминантовый квартсекстаккорд (D6/4)',
+    inversionTypeRu: 'Квартсекстаккорд (бас на II ст.)',
+    bassStepRu: 'II ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_D7',
+    degreeId: 'deg_V7',
+    functionGroup: 'D',
+    symbolMajor: 'D7',
+    symbolMinor: 'D7',
+    symbolRomanMajor: 'V7',
+    symbolRomanMinor: 'V7',
+    nameMajorRu: 'Доминантсептаккорд (D7)',
+    nameMinorRu: 'Гармонический D7 в миноре',
+    inversionTypeRu: 'Основной вид (бас на V ст.)',
+    bassStepRu: 'V ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_D65',
+    degreeId: 'deg_V7',
+    functionGroup: 'D',
+    symbolMajor: 'D6/5',
+    symbolMinor: 'D6/5',
+    symbolRomanMajor: 'V6/5',
+    symbolRomanMinor: 'V6/5',
+    nameMajorRu: 'Доминантовый квинтсекстаккорд (D6/5)',
+    nameMinorRu: 'Квинтсекстаккорд D7 в миноре (D6/5)',
+    inversionTypeRu: 'Квинтсекстаккорд (вводный тон VII в басу)',
+    bassStepRu: 'VII ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_D43',
+    degreeId: 'deg_V7',
+    functionGroup: 'D',
+    symbolMajor: 'D4/3',
+    symbolMinor: 'D4/3',
+    symbolRomanMajor: 'V4/3',
+    symbolRomanMinor: 'V4/3',
+    nameMajorRu: 'Доминантовый терцквартаккорд (D4/3)',
+    nameMinorRu: 'Терцквартаккорд D7 в миноре (D4/3)',
+    inversionTypeRu: 'Терцквартаккорд (бас на II ст.)',
+    bassStepRu: 'II ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_D2',
+    degreeId: 'deg_V7',
+    functionGroup: 'D',
+    symbolMajor: 'D2',
+    symbolMinor: 'D2',
+    symbolRomanMajor: 'V2',
+    symbolRomanMinor: 'V2',
+    nameMajorRu: 'Доминантовый секундаккорд (D2)',
+    nameMinorRu: 'Секундаккорд D7 в миноре (D2)',
+    inversionTypeRu: 'Секундаккорд (септима / IV ст. в басу)',
+    bassStepRu: 'IV ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_deg_D_add6_D_6',
+    degreeId: 'deg_D_add6',
+    functionGroup: 'D',
+    symbolMajor: 'D+6',
+    symbolMinor: 'D+6',
+    symbolRomanMajor: 'V+6',
+    symbolRomanMinor: 'V+6',
+    nameMajorRu: 'Доминанта с секстой (D+6)',
+    nameMinorRu: 'Доминанта с секстой (D+6)',
+    inversionTypeRu: 'Основной вид с секстой',
+    bassStepRu: 'V ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_deg_D_add6_D7_6',
+    degreeId: 'deg_D_add6',
+    functionGroup: 'D',
+    symbolMajor: 'D7+6',
+    symbolMinor: 'D7+6',
+    symbolRomanMajor: 'V7+6',
+    symbolRomanMinor: 'V7+6',
+    nameMajorRu: 'Доминантсептаккорд с секстой (D7+6)',
+    nameMinorRu: 'Доминантсептаккорд с секстой (D7+6)',
+    inversionTypeRu: 'Доминантсептаккорд с секстой',
+    bassStepRu: 'V ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_deg_D9_D9',
+    degreeId: 'deg_D9',
+    functionGroup: 'D',
+    symbolMajor: 'D9',
+    symbolMinor: 'D7♭9',
+    symbolRomanMajor: 'V9',
+    symbolRomanMinor: 'V7♭9',
+    nameMajorRu: 'Большой доминантнонанаккорд (D9)',
+    nameMinorRu: 'Малый доминантнонанаккорд (D7♭9)',
+    inversionTypeRu: 'Основной вид (бас на V ст.)',
+    bassStepRu: 'V ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_VII53',
+    degreeId: 'deg_VII',
+    functionGroup: 'D',
+    symbolMajor: 'VII°5/3',
+    symbolMinor: 'VII°5/3',
+    symbolRomanMajor: 'VII°5/3',
+    symbolRomanMinor: 'vii°5/3',
+    nameMajorRu: 'Уменьшенное трезвучие VII ст. (VII°5/3)',
+    nameMinorRu: 'Уменьшенное трезвучие VII ст. (VII°5/3)',
+    inversionTypeRu: 'Основной вид (бас на VII ст.)',
+    bassStepRu: 'VII ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_VII7',
+    degreeId: 'deg_VII',
+    functionGroup: 'D',
+    symbolMajor: 'VIIø7',
+    symbolMinor: 'VII°7',
+    symbolRomanMajor: 'VIIø7',
+    symbolRomanMinor: 'vii°7',
+    nameMajorRu: 'Вводный септаккорд (VIIø7)',
+    nameMinorRu: 'Уменьшенный вводный септаккорд (VII°7)',
+    inversionTypeRu: 'Основной вид (вводный тон VII в басу)',
+    bassStepRu: 'VII ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_VII65',
+    degreeId: 'deg_VII',
+    functionGroup: 'D',
+    symbolMajor: 'VIIø6/5',
+    symbolMinor: 'VII°6/5',
+    symbolRomanMajor: 'VIIø6/5',
+    symbolRomanMinor: 'vii°6/5',
+    nameMajorRu: 'Вводный квинтсекстаккорд (VIIø6/5)',
+    nameMinorRu: 'Ум. вводный квинтсекстаккорд (VII°6/5)',
+    inversionTypeRu: 'Квинтсекстаккорд (бас на II ст.)',
+    bassStepRu: 'II ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_VII43',
+    degreeId: 'deg_VII',
+    functionGroup: 'D',
+    symbolMajor: 'VIIø4/3',
+    symbolMinor: 'VII°4/3',
+    symbolRomanMajor: 'VIIø4/3',
+    symbolRomanMinor: 'vii°4/3',
+    nameMajorRu: 'Вводный терцквартаккорд (VIIø4/3)',
+    nameMinorRu: 'Ум. вводный терцквартаккорд (VII°4/3)',
+    inversionTypeRu: 'Терцквартаккорд (бас на IV ст.)',
+    bassStepRu: 'IV ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_VII2',
+    degreeId: 'deg_VII',
+    functionGroup: 'D',
+    symbolMajor: 'VIIø2',
+    symbolMinor: 'VII°2',
+    symbolRomanMajor: 'VIIø2',
+    symbolRomanMinor: 'vii°2',
+    nameMajorRu: 'Вводный секундаккорд (VIIø2)',
+    nameMinorRu: 'Ум. вводный секундаккорд (VII°2)',
+    inversionTypeRu: 'Секундаккорд (бас на VI ст.)',
+    bassStepRu: 'VI ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_deg_II7_alt_DD7',
+    degreeId: 'deg_II7_alt',
+    functionGroup: 'D',
+    symbolMajor: 'DD7',
+    symbolMinor: 'DD7',
+    symbolRomanMajor: 'DD7',
+    symbolRomanMinor: 'DD7',
+    nameMajorRu: 'Двойная доминанта (DD7)',
+    nameMinorRu: 'Двойная доминанта (DD7)',
+    inversionTypeRu: 'Септаккорд II высокой ступени (бас II♯)',
+    bassStepRu: 'II♯ ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+
+  // 4. Медианты (M)
+  {
+    id: 'v_VI53',
+    degreeId: 'deg_VI',
+    functionGroup: 'M',
+    symbolMajor: 'VI5/3',
+    symbolMinor: 'VI5/3',
+    symbolRomanMajor: 'VI5/3',
+    symbolRomanMinor: 'VI5/3',
+    nameMajorRu: 'Трезвучие VI ступени (VI5/3)',
+    nameMinorRu: 'Субмедианта / Прерванный каданс (VI5/3)',
+    inversionTypeRu: 'Основной вид (бас на VI ст.)',
+    bassStepRu: 'VI ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_VI6',
+    degreeId: 'deg_VI',
+    functionGroup: 'M',
+    symbolMajor: 'VI6',
+    symbolMinor: 'VI6',
+    symbolRomanMajor: 'VI6',
+    symbolRomanMinor: 'VI6',
+    nameMajorRu: 'Секстаккорд VI ступени (VI6)',
+    nameMinorRu: 'Секстаккорд VI ступени (VI6)',
+    inversionTypeRu: 'Секстаккорд (тоника I в басу)',
+    bassStepRu: 'I ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+  {
+    id: 'v_III53',
+    degreeId: 'deg_III',
+    functionGroup: 'M',
+    symbolMajor: 'III5/3',
+    symbolMinor: 'III5/3',
+    symbolRomanMajor: 'III5/3',
+    symbolRomanMinor: 'III5/3',
+    nameMajorRu: 'Верхняя медианта (III5/3)',
+    nameMinorRu: 'Параллельный мажор (III5/3)',
+    inversionTypeRu: 'Основной вид (бас на III ст.)',
+    bassStepRu: 'III ст.',
+    isRootPosition: true,
+    isPopularInversion: false,
+  },
+  {
+    id: 'v_III6',
+    degreeId: 'deg_III',
+    functionGroup: 'M',
+    symbolMajor: 'III6',
+    symbolMinor: 'III6',
+    symbolRomanMajor: 'III6',
+    symbolRomanMinor: 'III6',
+    nameMajorRu: 'Секстаккорд III ступени (III6)',
+    nameMinorRu: 'Секстаккорд III ступени (III6)',
+    inversionTypeRu: 'Секстаккорд (бас на V ст.)',
+    bassStepRu: 'V ст.',
+    isRootPosition: false,
+    isPopularInversion: true,
+  },
+];
+
+/**
+ * Calculates letter notation (e.g. C, C/E, G7/B, Dm7/F) for any popular tonal chord in any key.
+ */
+export function getChordLetterNotation(
+  voicingId: string,
+  tonicName: string,
+  isMajor: boolean
+): string {
+  const pitchMap: Record<string, number> = {
+    C: 0, 'C#': 1, 'C♯': 1, Cis: 1, Des: 1, 'Cis / Des': 1,
+    D: 2, 'D#': 3, 'D♯': 3, Dis: 3, Es: 3, 'Dis / Es': 3,
+    E: 4, F: 5,
+    'F#': 6, 'F♯': 6, Fis: 6, Ges: 6, 'Fis / Ges': 6,
+    G: 7, 'G#': 8, 'G♯': 8, Gis: 8, As: 8, 'Gis / As': 8,
+    A: 9, 'A#': 10, 'A♯': 10, Ais: 10, 'B♭': 10, Bb: 10, 'Ais / B': 10,
+    H: 11, B: 11,
+  };
+
+  const tonicPitch = pitchMap[tonicName] ?? 0;
+
+  // Use flat naming if key typically uses flats
+  const flatKeys = ['F', 'B', 'Bb', 'Es', 'As', 'Des', 'Ces', 'd', 'g', 'c', 'f', 'b', 'es'];
+  const useFlats =
+    flatKeys.some((k) => tonicName.toLowerCase().startsWith(k.toLowerCase())) ||
+    tonicName.includes('b') ||
+    tonicName.includes('es') ||
+    tonicName.includes('Des');
+
+  const sharpNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const flatNotes = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+  const noteList = useFlats ? flatNotes : sharpNotes;
+
+  const noteAt = (semitones: number) => {
+    const pitch = (tonicPitch + semitones + 120) % 12;
+    return noteList[pitch];
+  };
+
+  if (isMajor) {
+    switch (voicingId) {
+      case 'v_T53': return `${noteAt(0)}`;
+      case 'v_T6': return `${noteAt(0)}/${noteAt(4)}`;
+      case 'v_T64': return `${noteAt(0)}/${noteAt(7)}`;
+      case 'v_K64': return `${noteAt(0)}/${noteAt(7)} (K)`;
+      case 'v_S53': return `${noteAt(5)}`;
+      case 'v_S6': return `${noteAt(5)}/${noteAt(9)}`;
+      case 'v_S64': return `${noteAt(5)}/${noteAt(0)}`;
+      case 'v_s53': return `${noteAt(5)}m`;
+      case 'v_II53': return `${noteAt(2)}m`;
+      case 'v_II6': return `${noteAt(2)}m/${noteAt(5)}`;
+      case 'v_II7': return `${noteAt(2)}m7`;
+      case 'v_II65': return `${noteAt(2)}m7/${noteAt(5)}`;
+      case 'v_II43': return `${noteAt(2)}m7/${noteAt(9)}`;
+      case 'v_II2': return `${noteAt(2)}m7/${noteAt(0)}`;
+      case 'v_N6': return `${noteAt(1)}/${noteAt(5)}`;
+      case 'v_D53': return `${noteAt(7)}`;
+      case 'v_D6': return `${noteAt(7)}/${noteAt(11)}`;
+      case 'v_D64': return `${noteAt(7)}/${noteAt(2)}`;
+      case 'v_D7': return `${noteAt(7)}7`;
+      case 'v_D65': return `${noteAt(7)}7/${noteAt(11)}`;
+      case 'v_D43': return `${noteAt(7)}7/${noteAt(2)}`;
+      case 'v_D2': return `${noteAt(7)}7/${noteAt(5)}`;
+      case 'v_deg_D_add6_D_6': return `${noteAt(7)}+6`;
+      case 'v_deg_D_add6_D7_6': return `${noteAt(7)}7+6`;
+      case 'v_deg_D9_D9': return `${noteAt(7)}9`;
+      case 'v_deg_D9_D7b9': return `${noteAt(7)}7(♭9)`;
+      case 'v_VII53': return `${noteAt(11)}°`;
+      case 'v_VII7': return `${noteAt(11)}ø7`;
+      case 'v_VII65': return `${noteAt(11)}ø7/${noteAt(2)}`;
+      case 'v_VII43': return `${noteAt(11)}ø7/${noteAt(5)}`;
+      case 'v_VII2': return `${noteAt(11)}ø7/${noteAt(9)}`;
+      case 'v_deg_II7_alt_DD7': return `${noteAt(2)}7`;
+      case 'v_VI53': return `${noteAt(9)}m`;
+      case 'v_VI6': return `${noteAt(9)}m/${noteAt(0)}`;
+      case 'v_III53': return `${noteAt(4)}m`;
+      case 'v_III6': return `${noteAt(4)}m/${noteAt(7)}`;
+      default: return `${noteAt(0)}`;
+    }
+  } else {
+    // Minor
+    switch (voicingId) {
+      case 'v_T53': return `${noteAt(0)}m`;
+      case 'v_T6': return `${noteAt(0)}m/${noteAt(3)}`;
+      case 'v_T64': return `${noteAt(0)}m/${noteAt(7)}`;
+      case 'v_K64': return `${noteAt(0)}m/${noteAt(7)} (k)`;
+      case 'v_S53': return `${noteAt(5)}m`;
+      case 'v_S6': return `${noteAt(5)}m/${noteAt(8)}`;
+      case 'v_S64': return `${noteAt(5)}m/${noteAt(0)}`;
+      case 'v_s53': return `${noteAt(5)}m`;
+      case 'v_II53': return `${noteAt(2)}°`;
+      case 'v_II6': return `${noteAt(2)}°/${noteAt(5)}`;
+      case 'v_II7': return `${noteAt(2)}ø7`;
+      case 'v_II65': return `${noteAt(2)}ø7/${noteAt(5)}`;
+      case 'v_II43': return `${noteAt(2)}ø7/${noteAt(8)}`;
+      case 'v_II2': return `${noteAt(2)}ø7/${noteAt(0)}`;
+      case 'v_N6': return `${noteAt(1)}/${noteAt(5)}`;
+      case 'v_D53': return `${noteAt(7)}`;
+      case 'v_D6': return `${noteAt(7)}/${noteAt(11)}`;
+      case 'v_D64': return `${noteAt(7)}/${noteAt(2)}`;
+      case 'v_D7': return `${noteAt(7)}7`;
+      case 'v_D65': return `${noteAt(7)}7/${noteAt(11)}`;
+      case 'v_D43': return `${noteAt(7)}7/${noteAt(2)}`;
+      case 'v_D2': return `${noteAt(7)}7/${noteAt(5)}`;
+      case 'v_deg_D_add6_D_6': return `${noteAt(7)}+6`;
+      case 'v_deg_D_add6_D7_6': return `${noteAt(7)}7+6`;
+      case 'v_deg_D9_D7b9': return `${noteAt(7)}7(♭9)`;
+      case 'v_VII53': return `${noteAt(11)}°`;
+      case 'v_VII7': return `${noteAt(11)}°7`;
+      case 'v_VII65': return `${noteAt(11)}°7/${noteAt(2)}`;
+      case 'v_VII43': return `${noteAt(11)}°7/${noteAt(5)}`;
+      case 'v_VII2': return `${noteAt(11)}°7/${noteAt(8)}`;
+      case 'v_deg_II7_alt_DD7': return `${noteAt(2)}7`;
+      case 'v_VI53': return `${noteAt(8)}`;
+      case 'v_VI6': return `${noteAt(8)}/${noteAt(0)}`;
+      case 'v_III53': return `${noteAt(3)}`;
+      case 'v_III6': return `${noteAt(3)}/${noteAt(7)}`;
+      default: return `${noteAt(0)}m`;
+    }
+  }
+}
+
 export interface TonalChordVoicing {
+  id: string;
   degreeId: string;
   degreeRoman: string;
   degreeLabelRu: string;
@@ -487,15 +1160,69 @@ export interface TonalChordVoicing {
   chordQualityRu: string;
   inversionName: string;
   isRootPosition: boolean;
+  isPopularInversion?: boolean;
   semitonesFromTonic: number[];
 }
+
+function computeVoicingIdAndPopularFlag(v: { functionSymbolRu: string; degreeId: string; isRootPosition: boolean }): { id: string; isPopularInversion: boolean } {
+  const sym = v.functionSymbolRu;
+  if (sym.includes('K6/4') || sym.includes('k6/4')) return { id: 'v_K64', isPopularInversion: true };
+  if (sym === 'T6' || sym === 't6') return { id: 'v_T6', isPopularInversion: true };
+  if (sym === 'T6/4' || sym === 't6/4') return { id: 'v_T64', isPopularInversion: true };
+  if (sym === 'T5/3' || sym === 't5/3') return { id: 'v_T53', isPopularInversion: false };
+
+  if (sym === 'S6' || sym === 's6') return { id: 'v_S6', isPopularInversion: true };
+  if (sym === 'S6/4' || sym === 's6/4') return { id: 'v_S64', isPopularInversion: false };
+  if (sym === 'S5/3' || sym === 's5/3') return { id: 'v_S53', isPopularInversion: false };
+
+  if (sym === 'II6' || sym === 'II°6') return { id: 'v_II6', isPopularInversion: true };
+  if (sym === 'II5/3' || sym === 'II°5/3') return { id: 'v_II53', isPopularInversion: false };
+  if (sym === 'II6/5' || sym === 'IIø6/5') return { id: 'v_II65', isPopularInversion: true };
+  if (sym === 'II4/3' || sym === 'IIø4/3') return { id: 'v_II43', isPopularInversion: false };
+  if (sym === 'II2' || sym === 'IIø2') return { id: 'v_II2', isPopularInversion: false };
+  if (sym === 'II7' || sym === 'IIø7') return { id: 'v_II7', isPopularInversion: false };
+
+  if (sym === 'N6') return { id: 'v_N6', isPopularInversion: true };
+  if (sym === 'N5/3') return { id: 'v_N53', isPopularInversion: false };
+
+  if (sym === 'D6/5') return { id: 'v_D65', isPopularInversion: true };
+  if (sym === 'D4/3') return { id: 'v_D43', isPopularInversion: true };
+  if (sym === 'D2') return { id: 'v_D2', isPopularInversion: true };
+  if (sym === 'D7') return { id: 'v_D7', isPopularInversion: false };
+  if (sym === 'D6') return { id: 'v_D6', isPopularInversion: true };
+  if (sym === 'D6/4') return { id: 'v_D64', isPopularInversion: false };
+  if (sym === 'D5/3') return { id: 'v_D53', isPopularInversion: false };
+
+  if (sym.includes('VII°6/5') || sym.includes('VIIø6/5') || sym.includes('VII6/5')) return { id: 'v_VII65', isPopularInversion: true };
+  if (sym.includes('VII°4/3') || sym.includes('VIIø4/3')) return { id: 'v_VII43', isPopularInversion: false };
+  if (sym.includes('VII°2') || sym.includes('VIIø2')) return { id: 'v_VII2', isPopularInversion: false };
+  if (sym.includes('VII7') || sym.includes('VIIø7') || sym.includes('VII°7')) return { id: 'v_VII7', isPopularInversion: false };
+  if (sym.includes('VII5/3') || sym.includes('VII°5/3')) return { id: 'v_VII53', isPopularInversion: false };
+
+  if (sym === 'VI6') return { id: 'v_VI6', isPopularInversion: true };
+  if (sym === 'VI5/3') return { id: 'v_VI53', isPopularInversion: false };
+
+  if (sym === 'III6') return { id: 'v_III6', isPopularInversion: false };
+  if (sym === 'III5/3') return { id: 'v_III53', isPopularInversion: false };
+
+  // Fallback
+  return {
+    id: `v_${v.degreeId}_${sym.replace(/[^a-zA-Z0-9]/g, '_')}`,
+    isPopularInversion: !v.isRootPosition,
+  };
+}
+
+type RawTonalChordVoicing = Omit<TonalChordVoicing, 'id' | 'isPopularInversion'> & {
+  id?: string;
+  isPopularInversion?: boolean;
+};
 
 export function getVoicingsForDegree(
   degreeId: string,
   isMajor: boolean,
   tonicNoteName: string
 ): TonalChordVoicing[] {
-  const voicings: TonalChordVoicing[] = [];
+  const voicings: RawTonalChordVoicing[] = [];
 
   switch (degreeId) {
     case 'deg_I':
@@ -1420,6 +2147,19 @@ export function getVoicingsForDegree(
             inversionName: 'Септаккорд (VIIø7)',
             isRootPosition: true,
             semitonesFromTonic: [11, 14, 17, 21],
+          },
+          {
+            degreeId,
+            degreeRoman: 'VII',
+            degreeLabelRu: 'VIIø7',
+            degreeNameRu: 'VII ступень — Вводный квинтсекстаккорд (VIIø6/5)',
+            functionSymbolRu: 'VIIø6/5',
+            degreeExplanationRu: `Вводный квинтсекстаккорд в мажоре (бас на II ступени)`,
+            chordQuality: 'diminished',
+            chordQualityRu: 'Квинтсекстаккорд (VIIø6/5)',
+            inversionName: 'Квинтсекстаккорд (VIIø6/5)',
+            isRootPosition: false,
+            semitonesFromTonic: [14, 17, 21, 23],
           }
         );
       } else {
@@ -1481,5 +2221,158 @@ export function getVoicingsForDegree(
       break;
   }
 
-  return voicings;
+  return voicings.map((v) => {
+    const meta = computeVoicingIdAndPopularFlag(v);
+    return {
+      ...v,
+      id: meta.id,
+      isPopularInversion: meta.isPopularInversion,
+    };
+  });
+}
+
+export function findVoicingById(
+  voicingId: string,
+  isMajor: boolean,
+  tonicName: string
+): TonalChordVoicing | undefined {
+  const targetItem = POPULAR_TONAL_CHORDS.find((p) => p.id === voicingId);
+  if (targetItem) {
+    const degreeVoicings = getVoicingsForDegree(targetItem.degreeId, isMajor, tonicName);
+    const found = degreeVoicings.find((v) => v.id === voicingId);
+    if (found) return found;
+  }
+  for (const deg of TONAL_DEGREES) {
+    const degreeVoicings = getVoicingsForDegree(deg.id, isMajor, tonicName);
+    const found = degreeVoicings.find((v) => v.id === voicingId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+export interface TonalThemeDefinition {
+  id: TonalThemeId;
+  title: string;
+  shortTitle: string;
+  badge: string;
+  difficulty: 'beginner' | 'easy' | 'medium' | 'advanced' | 'all' | 'custom';
+  difficultyRu: string;
+  voicingIds: string[];
+  degreeIds: string[];
+  rootPositionOnly: boolean;
+  hintRu: string;
+  descRu: string;
+}
+
+export const TONAL_THEMES: TonalThemeDefinition[] = [
+  {
+    id: 'tsd_basics',
+    title: 'Главные трезвучия (T – S – D)',
+    shortTitle: 'Т – С – Д',
+    badge: '🌱 Старт',
+    difficulty: 'beginner',
+    difficultyRu: 'Начальный',
+    voicingIds: ['v_T53', 'v_S53', 'v_D53'],
+    degreeIds: ['deg_I', 'deg_IV', 'deg_V'],
+    rootPositionOnly: true,
+    hintRu: '3 базовых созвучия',
+    descRu: 'Главные устои лада: устойчивая тоника (T), мягкий отход субдоминанты (S) и острое тяготение доминанты (D).',
+  },
+  {
+    id: 'cadence_d7',
+    title: 'Каданс и D7',
+    shortTitle: 'Каданс и D7',
+    badge: '🎵 База',
+    difficulty: 'easy',
+    difficultyRu: 'Базовый',
+    voicingIds: ['v_T53', 'v_K64', 'v_S53', 'v_D53', 'v_D7'],
+    degreeIds: ['deg_I', 'deg_K64', 'deg_IV', 'deg_V', 'deg_V7'],
+    rootPositionOnly: false,
+    hintRu: '5 главных созвучий',
+    descRu: 'Классическая гармоническая основа: кадансовый квартсекстаккорд K6/4 и яркий доминантсептаккорд D7.',
+  },
+  {
+    id: 'sextachords',
+    title: 'Секстаккорды трезвучий',
+    shortTitle: 'Секстаккорды',
+    badge: '🎼 Секстаккорды',
+    difficulty: 'medium',
+    difficultyRu: 'Средний',
+    voicingIds: ['v_T53', 'v_T6', 'v_S53', 'v_S6', 'v_D53', 'v_D6', 'v_II6'],
+    degreeIds: ['deg_I', 'deg_IV', 'deg_II', 'deg_V'],
+    rootPositionOnly: false,
+    hintRu: '7 созвучий с терцовым басом',
+    descRu: 'Обращения трезвучий. Учитесь слышать терцовый бас: T6 (III ст.), S6 (VI ст.), II6 (IV ст.), D6 (VII ст.).',
+  },
+  {
+    id: 'd7_inversions',
+    title: 'Обращения D7',
+    shortTitle: 'Обращения D7',
+    badge: '🔥 D7 и обращ.',
+    difficulty: 'advanced',
+    difficultyRu: 'Продвинутый',
+    voicingIds: ['v_T53', 'v_D7', 'v_D65', 'v_D43', 'v_D2'],
+    degreeIds: ['deg_I', 'deg_V7'],
+    rootPositionOnly: false,
+    hintRu: '5 доминантовых созвучий',
+    descRu: 'Полная семья D7: основной вид (бас V), квинтсекстаккорд D6/5 (бас VII), терцквартаккорд D4/3 (бас II) и секундаккорд D2 (бас IV).',
+  },
+  {
+    id: 'secondary',
+    title: 'Побочные ступени (II и VI)',
+    shortTitle: 'Побочные (II, VI)',
+    badge: '🌟 Побочные',
+    difficulty: 'advanced',
+    difficultyRu: 'Продвинутый',
+    voicingIds: ['v_T53', 'v_II53', 'v_II6', 'v_S53', 'v_D53', 'v_VI53', 'v_K64'],
+    degreeIds: ['deg_I', 'deg_II', 'deg_IV', 'deg_V', 'deg_VI', 'deg_K64'],
+    rootPositionOnly: false,
+    hintRu: '7 созвучий',
+    descRu: 'Субдоминанта II ступени и прерванный каданс VI ступени в классическом функциональном контексте.',
+  },
+  {
+    id: 'leading_dim',
+    title: 'Вводные септаккорды (VII)',
+    shortTitle: 'Вводные (VII)',
+    badge: '⚡ Вводные',
+    difficulty: 'advanced',
+    difficultyRu: 'Сложный',
+    voicingIds: ['v_T53', 'v_D7', 'v_VII53', 'v_VII7', 'v_VII65', 'v_VII43', 'v_VII2'],
+    degreeIds: ['deg_I', 'deg_V7', 'deg_VII'],
+    rootPositionOnly: false,
+    hintRu: '7 созвучий',
+    descRu: 'Острые уменьшенные и полууменьшенные вводные септаккорды VII ступени и их обращения.',
+  },
+  {
+    id: 'all_popular',
+    title: 'Все созвучия курса',
+    shortTitle: 'Все созвучия',
+    badge: '💎 Полный курс',
+    difficulty: 'all',
+    difficultyRu: 'Все созвучия',
+    voicingIds: POPULAR_TONAL_CHORDS.map((c) => c.id),
+    degreeIds: TONAL_DEGREES.map((d) => d.id),
+    rootPositionOnly: false,
+    hintRu: '35 созвучий',
+    descRu: 'Полная палитра классической функциональной гармонии и обращений.',
+  },
+  {
+    id: 'custom',
+    title: 'Свой выбор',
+    shortTitle: 'Свой выбор',
+    badge: '⚙️ Кастом',
+    difficulty: 'custom',
+    difficultyRu: 'Свой выбор',
+    voicingIds: [],
+    degreeIds: [],
+    rootPositionOnly: false,
+    hintRu: 'Индивидуальный набор',
+    descRu: 'Ступени и обращения, выбранные пользователем в расширенных настройках.',
+  },
+];
+
+export function getTonalThemeById(id?: TonalThemeId): TonalThemeDefinition {
+  if (!id) return TONAL_THEMES[0];
+  const found = TONAL_THEMES.find((t) => t.id === id);
+  return found || TONAL_THEMES[0];
 }

@@ -88,7 +88,7 @@ export const CategoryChips: React.FC<CategoryChipsProps> = ({
   onToggleCategory,
 }) => {
   return (
-    <div className="w-full bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-xl p-1 sm:p-1.5 shadow-sm">
+    <div className="w-full bg-slate-900/60 border border-slate-800 rounded-xl p-1 sm:p-1.5 shadow-sm">
       {/* Exactly 7 buttons in a row */}
       <div className="grid grid-cols-7 gap-1 sm:gap-1.5 w-full">
         {QUICK_CATEGORIES.map((cat) => {
@@ -100,16 +100,16 @@ export const CategoryChips: React.FC<CategoryChipsProps> = ({
               key={cat.key}
               type="button"
               onClick={() => onToggleCategory(cat.key)}
-              className={`flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 py-1.5 px-0.5 sm:px-1.5 rounded-lg text-[9px] sm:text-xs transition active:scale-[0.97] cursor-pointer border ${
+              className={`flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 py-1.5 px-0.5 sm:px-1.5 rounded-md text-[9px] sm:text-xs transition active:scale-[0.98] cursor-pointer border ${
                 isSelected
-                  ? 'bg-indigo-600 text-white border-indigo-400/90 shadow-sm shadow-indigo-950 font-bold ring-1 ring-indigo-400/40'
-                  : 'bg-slate-950/40 hover:bg-slate-800/60 text-slate-300 hover:text-slate-100 border-slate-800/80 font-medium'
+                  ? 'bg-indigo-600 text-white border-indigo-500 font-semibold'
+                  : 'bg-slate-950/60 hover:bg-slate-800/60 text-slate-300 hover:text-slate-100 border-slate-800 font-medium'
               }`}
               title={`${cat.label} (кликните для выбора/снятия)`}
             >
               <IconComponent
                 className={`w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 ${
-                  isSelected ? 'text-white' : 'text-indigo-400'
+                  isSelected ? 'text-white' : 'text-slate-400'
                 }`}
               />
               <span className="truncate whitespace-nowrap hidden md:inline">

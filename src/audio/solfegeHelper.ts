@@ -1,18 +1,400 @@
-import { MusicItem } from '../types';
+import { MusicItem, AppStats } from '../types';
 import { CHROMATIC_NOTES_UP } from '../data/musicData';
+import { pickWeightedItem } from '../utils/spacedRepetition';
 import {
   TONAL_DEGREES,
   TonalDegreeDefinition,
   getVoicingsForDegree,
   TonalChordVoicing,
   ResolutionSchemeItem,
+  POPULAR_TONAL_CHORDS,
+  PopularTonalChordItem,
+  findVoicingById,
 } from './tonalChords';
+import {
+  RealizedProgression,
+  RealizedProgressionStep,
+  HarmonicProgressionTemplate,
+} from './harmonicProgressions';
+
+export const RUSSIAN_NOTE_NAMES_BY_SEMITONE: Record<number, string> = {
+  0: 'До',
+  1: 'До♯ / Ре♭',
+  2: 'Ре',
+  3: 'Ми♭',
+  4: 'Ми',
+  5: 'Фа',
+  6: 'Фа♯ / Соль♭',
+  7: 'Соль',
+  8: 'Ля♭',
+  9: 'Ля',
+  10: 'Си♭',
+  11: 'Си',
+};
 
 export interface SolfegeStep {
   fromNote: string;
   toNote: string;
   intervalName: string;
   semitones: number;
+}
+
+export interface ScaleDegreeTask {
+  id: string;
+  degreeRoman: string;
+  degreeNumber: number | string;
+  degreeNameRu: string;
+  solfegeNameRu: string;
+  functionRoleRu: string;
+  stability: 'stable' | 'unstable';
+  targetMidi: number;
+  targetNoteName: string;
+  tonicMidi: number;
+  tonicNoteName: string;
+  keyScaleMode: 'major' | 'minor';
+  keyNameRu: string;
+  resolutionMidi: number;
+  resolutionPathMidis: number[];
+  resolutionNoteName: string;
+  resolutionNameRu: string;
+  degreeType: 'diatonic' | 'chromatic';
+  revealed: boolean;
+  userAnswerId: string | null;
+  userAnswerIds?: string[];
+  isCorrect: boolean | null;
+  incorrectAnswers?: string[];
+  secondTargetMidi?: number;
+  secondDegreeId?: string;
+  secondDegreeNameRu?: string;
+  isTwoNotes?: boolean;
+}
+
+export function generateScaleDegreeTask(
+  tonalRootPref: string = 'C',
+  tonalModePref: 'major' | 'minor' | 'any' = 'major',
+  degreeTypePref: 'diatonic' | 'chromatic' = 'diatonic',
+  stats?: AppStats,
+  spacedRepetitionEnabled: boolean = true,
+  isTwoNotes: boolean = false
+): ScaleDegreeTask {
+  const NOTE_LOOKUP: Record<string, number> = {
+    'c': 0, 'cis': 1, 'des': 1, 'd': 2, 'dis': 3, 'es': 3, 'e': 4,
+    'f': 5, 'fis': 6, 'ges': 6, 'g': 7, 'gis': 8, 'as': 8, 'a': 9,
+    'ais': 10, 'b': 10, 'h': 11,
+  };
+
+  let tonicPitchClass = 0;
+  if (tonalRootPref === 'random' || !tonalRootPref) {
+    tonicPitchClass = Math.floor(Math.random() * 12);
+  } else {
+    const clean = tonalRootPref.toLowerCase().split(/[\s(/]/)[0];
+    tonicPitchClass = NOTE_LOOKUP[clean] ?? 0;
+  }
+
+  let mode: 'major' | 'minor' = 'major';
+  if (tonalModePref === 'any') {
+    mode = Math.random() > 0.5 ? 'major' : 'minor';
+  } else if (tonalModePref === 'minor') {
+    mode = 'minor';
+  }
+
+  const tonicMidi = 60 + tonicPitchClass;
+  const tonicNoteName = CHROMATIC_NOTES_UP[tonicPitchClass];
+  const keyNameRu = `${tonicNoteName} ${mode === 'major' ? 'мажор' : 'минор'}`;
+
+  const thirdSemitones = mode === 'major' ? 4 : 3;
+  const sixthSemitones = mode === 'major' ? 9 : 8;
+
+  const diatonicDegrees = [
+    {
+      id: 'deg_I',
+      roman: 'I',
+      num: '1',
+      semitones: 0,
+      solfege: 'До',
+      nameRu: 'I ступень — Тоника',
+      roleRu: 'Главная ладовая опора',
+      stability: 'stable' as const,
+      pathSemitones: [0],
+      resText: 'I (Тоника)',
+    },
+    {
+      id: 'deg_II',
+      roman: 'II',
+      num: '2',
+      semitones: 2,
+      solfege: 'Ре',
+      nameRu: 'II ступень — Вводный тон',
+      roleRu: 'Разрешается по ступеням вниз в I',
+      stability: 'unstable' as const,
+      pathSemitones: [2, 0],
+      resText: 'II → I',
+    },
+    {
+      id: 'deg_III',
+      roman: 'III',
+      num: '3',
+      semitones: thirdSemitones,
+      solfege: mode === 'major' ? 'Ми' : 'Ми-бемоль',
+      nameRu: 'III ступень — Медианта',
+      roleRu: 'Задает ладовую окраску',
+      stability: 'stable' as const,
+      pathSemitones: [thirdSemitones, 2, 0],
+      resText: 'III → II → I',
+    },
+    {
+      id: 'deg_IV',
+      roman: 'IV',
+      num: '4',
+      semitones: 5,
+      solfege: 'Фа',
+      nameRu: 'IV ступень — Субдоминанта',
+      roleRu: 'Разрешается по ступеням вниз в I',
+      stability: 'unstable' as const,
+      pathSemitones: [5, thirdSemitones, 2, 0],
+      resText: 'IV → III → II → I',
+    },
+    {
+      id: 'deg_V',
+      roman: 'V',
+      num: '5',
+      semitones: 7,
+      solfege: 'Соль',
+      nameRu: 'V ступень — Доминанта',
+      roleRu: 'Квинтовая опора',
+      stability: 'stable' as const,
+      pathSemitones: [7, sixthSemitones, 11, 12],
+      resText: 'V → VI → VII → I',
+    },
+    {
+      id: 'deg_VI',
+      roman: 'VI',
+      num: '6',
+      semitones: sixthSemitones,
+      solfege: mode === 'major' ? 'Ля' : 'Ля-бемоль',
+      nameRu: 'VI ступень — Верхняя медианта',
+      roleRu: 'Разрешается по ступеням вверх в I',
+      stability: 'unstable' as const,
+      pathSemitones: [sixthSemitones, 11, 12],
+      resText: 'VI → VII → I',
+    },
+    {
+      id: 'deg_VII',
+      roman: 'VII',
+      num: '7',
+      semitones: 11,
+      solfege: 'Си',
+      nameRu: 'VII ступень — Вводный тон',
+      roleRu: 'Разрешается по ступеням вверх в I',
+      stability: 'unstable' as const,
+      pathSemitones: [11, 12],
+      resText: 'VII → I',
+    },
+  ];
+
+  const chromaticDegrees = [
+    {
+      id: 'deg_I',
+      roman: 'I',
+      num: '1',
+      semitones: 0,
+      solfege: 'До',
+      nameRu: 'I ступень — Тоника',
+      roleRu: 'Главная опора',
+      stability: 'stable' as const,
+      pathSemitones: [0],
+      resText: 'I',
+    },
+    {
+      id: 'deg_bII',
+      roman: '♭II',
+      num: '♭2',
+      semitones: 1,
+      solfege: 'До♯ / Ре♭',
+      nameRu: '♭II ступень (Низкая II)',
+      roleRu: 'Разрешается в I ступень',
+      stability: 'unstable' as const,
+      pathSemitones: [1, 0],
+      resText: '♭II → I',
+    },
+    {
+      id: 'deg_II',
+      roman: 'II',
+      num: '2',
+      semitones: 2,
+      solfege: 'Ре',
+      nameRu: 'II ступень',
+      roleRu: 'Разрешается по ступеням вниз в I',
+      stability: 'unstable' as const,
+      pathSemitones: [2, 0],
+      resText: 'II → I',
+    },
+    {
+      id: 'deg_bIII',
+      roman: mode === 'major' ? '♭III' : 'III',
+      num: mode === 'major' ? '♭3' : '3',
+      semitones: 3,
+      solfege: 'Ми♭',
+      nameRu: mode === 'major' ? '♭III (Низкая III)' : 'III ступень (Минор)',
+      roleRu: mode === 'major' ? 'Разрешается через III в I' : 'Устойчивая ступень (вниз в I)',
+      stability: mode === 'major' ? ('unstable' as const) : ('stable' as const),
+      pathSemitones: mode === 'major' ? [3, 4, 2, 0] : [3, 2, 0],
+      resText: mode === 'major' ? '♭III → III → II → I' : 'III → II → I',
+    },
+    {
+      id: 'deg_III',
+      roman: mode === 'major' ? 'III' : '♯III',
+      num: mode === 'major' ? '3' : '♯3',
+      semitones: 4,
+      solfege: 'Ми',
+      nameRu: mode === 'major' ? 'III ступень (Мажор)' : '♯III (Высокая III)',
+      roleRu: mode === 'major' ? 'Устойчивая ступень (вниз в I)' : 'Разрешается через III в I',
+      stability: mode === 'major' ? ('stable' as const) : ('unstable' as const),
+      pathSemitones: mode === 'major' ? [4, 2, 0] : [4, 3, 2, 0],
+      resText: mode === 'major' ? 'III → II → I' : '♯III → III → II → I',
+    },
+    {
+      id: 'deg_IV',
+      roman: 'IV',
+      num: '4',
+      semitones: 5,
+      solfege: 'Фа',
+      nameRu: 'IV ступень',
+      roleRu: 'Разрешается по ступеням вниз в I',
+      stability: 'unstable' as const,
+      pathSemitones: [5, thirdSemitones, 2, 0],
+      resText: 'IV → III → II → I',
+    },
+    {
+      id: 'deg_bV',
+      roman: '♭V / ♯IV',
+      num: '♯4/♭5',
+      semitones: 6,
+      solfege: 'Фа♯ / Соль♭',
+      nameRu: '♯IV / ♭V ступень (Тритон)',
+      roleRu: 'Разрешается через V вверх в I',
+      stability: 'unstable' as const,
+      pathSemitones: [6, 7, sixthSemitones, 11, 12],
+      resText: '♯IV → V → VI → VII → I',
+    },
+    {
+      id: 'deg_V',
+      roman: 'V',
+      num: '5',
+      semitones: 7,
+      solfege: 'Соль',
+      nameRu: 'V ступень — Доминанта',
+      roleRu: 'Разрешается по ступеням вверх в I',
+      stability: 'stable' as const,
+      pathSemitones: [7, sixthSemitones, 11, 12],
+      resText: 'V → VI → VII → I',
+    },
+    {
+      id: 'deg_bVI',
+      roman: mode === 'major' ? '♭VI' : 'VI',
+      num: mode === 'major' ? '♭6' : '6',
+      semitones: 8,
+      solfege: 'Ля♭',
+      nameRu: mode === 'major' ? '♭VI (Низкая VI)' : 'VI ступень (Минор)',
+      roleRu: 'Разрешается через V и дальше вверх в I',
+      stability: mode === 'major' ? ('unstable' as const) : ('unstable' as const),
+      pathSemitones: mode === 'major' ? [8, 7, 9, 11, 12] : [8, 11, 12],
+      resText: mode === 'major' ? '♭VI → V → VI → VII → I' : 'VI → VII → I',
+    },
+    {
+      id: 'deg_VI',
+      roman: mode === 'major' ? 'VI' : '♯VI',
+      num: mode === 'major' ? '6' : '♯6',
+      semitones: 9,
+      solfege: 'Ля',
+      nameRu: mode === 'major' ? 'VI ступень (Мажор)' : '♯VI (Высокая VI)',
+      roleRu: 'Разрешается по ступеням вверх в I',
+      stability: 'unstable' as const,
+      pathSemitones: [9, 11, 12],
+      resText: 'VI → VII → I',
+    },
+    {
+      id: 'deg_bVII',
+      roman: '♭VII',
+      num: '♭7',
+      semitones: 10,
+      solfege: 'Си♭',
+      nameRu: '♭VII ступень',
+      roleRu: 'Разрешается по ступеням вверх в I',
+      stability: 'unstable' as const,
+      pathSemitones: [10, 11, 12],
+      resText: '♭VII → VII → I',
+    },
+    {
+      id: 'deg_VII',
+      roman: 'VII',
+      num: '7',
+      semitones: 11,
+      solfege: 'Си',
+      nameRu: 'VII ступень',
+      roleRu: 'Разрешается по ступеням вверх в I',
+      stability: 'unstable' as const,
+      pathSemitones: [11, 12],
+      resText: 'VII → I',
+    },
+  ];
+
+  const degreesList = degreeTypePref === 'chromatic' ? chromaticDegrees : diatonicDegrees;
+  const chosen = pickWeightedItem(
+    degreesList,
+    (d) => d.id,
+    stats,
+    spacedRepetitionEnabled
+  );
+  const targetMidi = tonicMidi + chosen.semitones;
+  const targetNoteName = CHROMATIC_NOTES_UP[((targetMidi % 12) + 12) % 12];
+
+  let secondTargetMidi: number | undefined;
+  let secondDegreeId: string | undefined;
+  let secondDegreeNameRu: string | undefined;
+
+  if (isTwoNotes) {
+    const available = degreesList.filter((d) => d.id !== chosen.id);
+    const chosen2 = available[Math.floor(Math.random() * available.length)] || degreesList[0];
+    secondTargetMidi = tonicMidi + chosen2.semitones;
+    secondDegreeId = chosen2.id;
+    secondDegreeNameRu = chosen2.nameRu;
+  }
+
+  const resolutionPathMidis = chosen.pathSemitones.map((s) => tonicMidi + s);
+  const resolutionMidi = resolutionPathMidis[resolutionPathMidis.length - 1] ?? tonicMidi;
+  const resolutionNoteName = CHROMATIC_NOTES_UP[((resolutionMidi % 12) + 12) % 12];
+  const resolutionNameRu = chosen.resText;
+  const targetNoteRu = RUSSIAN_NOTE_NAMES_BY_SEMITONE[((targetMidi % 12) + 12) % 12] ?? chosen.solfege;
+
+  return {
+    id: chosen.id,
+    degreeRoman: chosen.roman,
+    degreeNumber: chosen.num,
+    degreeNameRu: chosen.nameRu,
+    solfegeNameRu: targetNoteRu,
+    functionRoleRu: chosen.roleRu,
+    stability: chosen.stability,
+    targetMidi,
+    targetNoteName,
+    secondTargetMidi,
+    secondDegreeId,
+    secondDegreeNameRu,
+    isTwoNotes,
+    tonicMidi,
+    tonicNoteName,
+    keyScaleMode: mode,
+    keyNameRu,
+    resolutionMidi,
+    resolutionPathMidis,
+    resolutionNoteName,
+    resolutionNameRu,
+    degreeType: degreeTypePref,
+    revealed: false,
+    userAnswerId: null,
+    userAnswerIds: [],
+    isCorrect: null,
+  };
 }
 
 export interface ConstructionBreakdown {
@@ -215,6 +597,8 @@ export function getItemDiatonicSteps(item: MusicItem): number[] {
   // D7 Inversions:
   if (item.category === 'd7_inversions') {
     switch (item.id) {
+      case 'd7':
+        return [2, 2, 2]; // терция + терция + терция
       case 'd7_65':
         return [2, 2, 1]; // терция + терция + секунда
       case 'd7_43':
@@ -498,6 +882,8 @@ export function getChordFullNameWithRoot(item: MusicItem, rootTone: string): str
       return `${rootTone} большой уменьшенный септаккорд (Бум7)`;
     case 'seventh_buv7':
       return `${rootTone} большой увеличенный септаккорд (Був7)`;
+    case 'd7':
+      return `${rootTone} D7 (на V)`;
     case 'd7_65':
       return `${rootTone} D6/5 (на VII)`;
     case 'd7_43':
@@ -708,6 +1094,9 @@ export interface CharacteristicResolution {
     to: string;
     degreeTo: string;
   }[];
+  isTritoneDouble?: boolean;
+  uv4Resolution?: CharacteristicResolution;
+  um5Resolution?: CharacteristicResolution;
 }
 
 export function getCharacteristicResolution(
@@ -719,7 +1108,8 @@ export function getCharacteristicResolution(
   if (
     item.category !== 'characteristic_intervals' &&
     item.category !== 'd7_inversions' &&
-    item.id !== 'seventh_mb7'
+    item.id !== 'seventh_mb7' &&
+    item.id !== 'tritone'
   ) {
     return null;
   }
@@ -1129,6 +1519,66 @@ export function getCharacteristicResolution(
       break;
     }
 
+    case 'tritone': {
+      // 1. Calculate ув.4: bottom.letter, top.letter = bottom.letter + 3
+      const uv4BottomLetter = parsedLower.baseLetter;
+      const uv4TopLetter = (parsedLower.baseLetter + 3) % 7;
+      const uv4BottomNote = formatDiatonicNote(uv4BottomLetter, ((lowerMidi % 12) + 12) % 12);
+      const uv4TopNote = formatDiatonicNote(uv4TopLetter, ((upperMidi % 12) + 12) % 12);
+
+      const uv4ResLowerLetter = (uv4BottomLetter - 1 + 7) % 7;
+      const uv4ResLowerMidi = lowerMidi - 1;
+      const uv4ResLowerNote = formatDiatonicNote(uv4ResLowerLetter, ((uv4ResLowerMidi % 12) + 12) % 12);
+
+      const uv4ResUpperLetter = (uv4TopLetter + 1) % 7;
+      const uv4ResUpperMidi = upperMidi + 1;
+      const uv4ResUpperNote = formatDiatonicNote(uv4ResUpperLetter, ((uv4ResUpperMidi % 12) + 12) % 12);
+
+      const uv4Resolution: CharacteristicResolution = {
+        tonality: `Разрешение как ув.4 (расширение в сексту)`,
+        resolvedIntervalName: 'секста (б.6 / м.6)',
+        resolvedNotesString: `${uv4ResLowerNote} — ${uv4ResUpperNote}`,
+        voiceMovements: [
+          { from: uv4BottomNote, degreeFrom: 'ув.4', to: uv4ResLowerNote, degreeTo: 'VI/III' },
+          { from: uv4TopNote, degreeFrom: 'ув.4', to: uv4ResUpperNote, degreeTo: 'I' },
+        ],
+      };
+
+      // 2. Calculate ум.5: bottom.letter, top.letter = bottom.letter + 4
+      const um5BottomLetter = parsedLower.baseLetter;
+      const um5TopLetter = (parsedLower.baseLetter + 4) % 7;
+      const um5BottomNote = formatDiatonicNote(um5BottomLetter, ((lowerMidi % 12) + 12) % 12);
+      const um5TopNote = formatDiatonicNote(um5TopLetter, ((upperMidi % 12) + 12) % 12);
+
+      const um5ResLowerLetter = (um5BottomLetter + 1) % 7;
+      const um5ResLowerMidi = lowerMidi + 1;
+      const um5ResLowerNote = formatDiatonicNote(um5ResLowerLetter, ((um5ResLowerMidi % 12) + 12) % 12);
+
+      const um5ResUpperLetter = (um5TopLetter - 1 + 7) % 7;
+      const um5ResUpperMidi = upperMidi - 1;
+      const um5ResUpperNote = formatDiatonicNote(um5ResUpperLetter, ((um5ResUpperMidi % 12) + 12) % 12);
+
+      const um5Resolution: CharacteristicResolution = {
+        tonality: `Разрешение как ум.5 (сужение в терцию)`,
+        resolvedIntervalName: 'терция (б.3 / м.3)',
+        resolvedNotesString: `${um5ResLowerNote} — ${um5ResUpperNote}`,
+        voiceMovements: [
+          { from: um5BottomNote, degreeFrom: 'ум.5', to: um5ResLowerNote, degreeTo: 'I' },
+          { from: um5TopNote, degreeFrom: 'ум.5', to: um5ResUpperNote, degreeTo: 'III' },
+        ],
+      };
+
+      return {
+        tonality: 'Разрешение тритона',
+        resolvedIntervalName: 'Двойное разрешение',
+        resolvedNotesString: `${uv4ResLowerNote}-${uv4ResUpperNote} / ${um5ResLowerNote}-${um5ResUpperNote}`,
+        voiceMovements: [],
+        isTritoneDouble: true,
+        uv4Resolution,
+        um5Resolution,
+      };
+    }
+
     default:
       return null;
   }
@@ -1270,6 +1720,7 @@ export interface SmartVoicingTask {
   functionSymbolRu: string;
   degreeExplanationRu: string;
   isRootPosition: boolean;
+  voicingId?: string;
   resolutionsScheme?: ResolutionSchemeItem[];
   voicesBottomToTop: VoiceDegreeRow[];
 }
@@ -1360,7 +1811,10 @@ export function generateSmartVoicingTask(
   chordFilterMode: 'all' | 'diatonic' = 'all',
   scaleModeSetting: 'major' | 'minor' | 'any' = 'major',
   rootPositionOnly: boolean = false,
-  allowedDegrees?: string[]
+  allowedDegrees?: string[],
+  allowedVoicings?: string[],
+  stats?: AppStats,
+  spacedRepetitionEnabled: boolean = true
 ): SmartVoicingTask {
   // 1. Base note selection: default to 'A' (A4 = MIDI 69)
   const effectiveBase = fixedBaseNote ?? 'A';
@@ -1401,16 +1855,37 @@ export function generateSmartVoicingTask(
     ? `${baseNoteName}-dur (${baseNoteName} мажор)`
     : `${baseNoteName}-moll (${baseNoteName} минор)`;
 
-  // Filter degrees by allowedDegrees if provided
-  let degreesToUse = TONAL_DEGREES;
-  if (allowedDegrees && allowedDegrees.length > 0) {
-    const filtered = TONAL_DEGREES.filter((d) => allowedDegrees.includes(d.id));
-    if (filtered.length > 0) {
-      degreesToUse = filtered;
+  // Determine the active pool of popular chords matching active settings
+  let activePool = POPULAR_TONAL_CHORDS;
+
+  // If explicit allowedVoicings are provided (from active theme or custom selection), respect them directly
+  if (allowedVoicings && allowedVoicings.length > 0) {
+    const vFiltered = POPULAR_TONAL_CHORDS.filter((c) => allowedVoicings.includes(c.id));
+    if (vFiltered.length > 0) {
+      activePool = vFiltered;
+    }
+  } else {
+    // In root-only mode: only chords where isRootPosition === true
+    if (rootPositionOnly) {
+      activePool = activePool.filter((c) => c.isRootPosition);
+    }
+
+    // Filter by allowedDegrees if provided
+    if (allowedDegrees && allowedDegrees.length > 0) {
+      const degFiltered = activePool.filter((c) => allowedDegrees.includes(c.degreeId));
+      if (degFiltered.length > 0) {
+        activePool = degFiltered;
+      }
     }
   }
 
-  // 2. Build candidate voicings for all active degrees
+  if (activePool.length === 0) {
+    activePool = rootPositionOnly
+      ? POPULAR_TONAL_CHORDS.filter((c) => c.isRootPosition)
+      : POPULAR_TONAL_CHORDS;
+  }
+
+  // 2. Build candidate voicings for all active chords
   interface Candidate {
     degreeId: string;
     degreeRoman: string;
@@ -1426,106 +1901,119 @@ export function generateSmartVoicingTask(
     chordQualityRu: string;
     inversionName: string;
     isRootPosition: boolean;
+    voicingId: string;
     chordNotesMidi: number[];
     rootMidi: number;
     resolutionsScheme: ResolutionSchemeItem[];
     score: number;
   }
 
-  const candidates: Candidate[] = [];
+  const chordCandidatesMap = new Map<string, Candidate[]>();
 
-  for (const deg of degreesToUse) {
-    const degreeVoicings = getVoicingsForDegree(deg.id, isMaj, baseNoteName);
+  for (const item of activePool) {
+    const v = findVoicingById(item.id, isMaj, baseNoteName);
+    if (!v) continue;
 
-    for (const v of degreeVoicings) {
-      if (rootPositionOnly && !v.isRootPosition) {
-        continue;
+    const degDef = TONAL_DEGREES.find((d) => d.id === item.degreeId);
+    const candidatesForChord: Candidate[] = [];
+
+    // Check octave placements (octave 3, 4, 5)
+    for (let oct = 3; oct <= 5; oct++) {
+      const baseOctaveMidi = oct * 12 + tonicPitch;
+      const notesMidi = v.semitonesFromTonic.map((s) => baseOctaveMidi + s);
+      const minMidi = Math.min(...notesMidi);
+      const maxMidi = Math.max(...notesMidi);
+
+      // Comfortable middle register piano listening range: D3 (50) to C6 (84)
+      // Completely eliminates low, muddy bass notes in octave 2 (< 50)
+      if (minMidi < 50 || maxMidi > 84) continue;
+
+      let score = 100;
+      const isStrictlyInside = minMidi < baseMidi && baseMidi < maxMidi;
+      const matchesBass = baseMidi === minMidi;
+      const matchesSoprano = baseMidi === maxMidi;
+      const matchesAny = notesMidi.includes(baseMidi);
+
+      if (isStrictlyInside) {
+        score += 80;
+      } else if (matchesBass || matchesSoprano) {
+        score += 50;
+      } else if (matchesAny) {
+        score += 30;
       }
 
-      // Check octave placements (octave 3, 4, 5)
-      for (let oct = 3; oct <= 5; oct++) {
-        const baseOctaveMidi = oct * 12 + tonicPitch;
-        const notesMidi = v.semitonesFromTonic.map((s) => baseOctaveMidi + s);
-        const minMidi = Math.min(...notesMidi);
-        const maxMidi = Math.max(...notesMidi);
+      // Center voicing comfortably in the middle register (MIDI 62..65, D4..F4)
+      const avgMidi = notesMidi.reduce((a, b) => a + b, 0) / notesMidi.length;
+      score -= Math.abs(avgMidi - 63) * 2.5;
+      score -= (maxMidi - minMidi) * 0.5;
 
-        // Comfortable piano listening range: C3 (48) to G5 (79)
-        if (minMidi < 46 || maxMidi > 80) continue;
+      candidatesForChord.push({
+        degreeId: v.degreeId,
+        degreeRoman: v.degreeRoman,
+        degreeLabelRu: degDef ? (isMaj ? degDef.labelMajor : degDef.labelMinor) : v.degreeLabelRu,
+        degreeNameRu: degDef ? (isMaj ? degDef.nameMajorRu : degDef.nameMinorRu) : v.degreeNameRu,
+        functionGroup: degDef ? degDef.functionGroup : (item.functionGroup === 'T' ? 'Тоника (T)' : item.functionGroup === 'S' ? 'Субдоминанта (S)' : item.functionGroup === 'D' ? 'Доминанта (D)' : 'Медианты (M)'),
+        functionalStrengthRu: degDef ? degDef.functionalStrengthRu : '',
+        harmonicRoleRu: degDef ? degDef.harmonicRoleRu : '',
+        usageMethodsRu: degDef ? degDef.usageMethodsRu : '',
+        functionSymbolRu: v.functionSymbolRu,
+        degreeExplanationRu: v.degreeExplanationRu,
+        chordQuality: v.chordQuality,
+        chordQualityRu: v.chordQualityRu,
+        inversionName: v.inversionName,
+        isRootPosition: v.isRootPosition,
+        voicingId: v.id,
+        chordNotesMidi: notesMidi,
+        rootMidi: notesMidi[0],
+        resolutionsScheme: degDef?.resolutionsScheme || [],
+        score,
+      });
+    }
 
-        let score = 0;
-        const isStrictlyInside = minMidi < baseMidi && baseMidi < maxMidi;
-        const matchesBass = baseMidi === minMidi;
-        const matchesSoprano = baseMidi === maxMidi;
-        const matchesAny = notesMidi.includes(baseMidi);
-
-        if (isStrictlyInside) {
-          score += 180;
-        } else if (matchesBass || matchesSoprano) {
-          score += 130;
-        } else if (matchesAny) {
-          score += 110;
-        } else {
-          score += 20;
-        }
-
-        const avgMidi = notesMidi.reduce((a, b) => a + b, 0) / notesMidi.length;
-        score -= Math.abs(avgMidi - baseMidi) * 2.2;
-        score -= (maxMidi - minMidi) * 0.7;
-
-        if (['deg_I', 'deg_IV', 'deg_V', 'deg_V7', 'deg_D_add6', 'deg_S_alt'].includes(deg.id)) {
-          score += 20;
-        }
-
-        candidates.push({
-          degreeId: deg.id,
-          degreeRoman: deg.degreeRoman,
-          degreeLabelRu: isMaj ? deg.labelMajor : deg.labelMinor,
-          degreeNameRu: isMaj ? deg.nameMajorRu : deg.nameMinorRu,
-          functionGroup: deg.functionGroup,
-          functionalStrengthRu: deg.functionalStrengthRu,
-          harmonicRoleRu: deg.harmonicRoleRu,
-          usageMethodsRu: deg.usageMethodsRu,
-          functionSymbolRu: v.functionSymbolRu,
-          degreeExplanationRu: v.degreeExplanationRu,
-          chordQuality: v.chordQuality,
-          chordQualityRu: v.chordQualityRu,
-          inversionName: v.inversionName,
-          isRootPosition: v.isRootPosition,
-          chordNotesMidi: notesMidi,
-          rootMidi: notesMidi[0],
-          resolutionsScheme: deg.resolutionsScheme,
-          score,
-        });
-      }
+    if (candidatesForChord.length > 0) {
+      candidatesForChord.sort((a, b) => b.score - a.score);
+      chordCandidatesMap.set(item.id, candidatesForChord);
     }
   }
 
-  candidates.sort((a, b) => b.score - a.score);
+  // Pick a chord from the active chords using Spaced Repetition if available
+  const availableVoicingIds = Array.from(chordCandidatesMap.keys());
+  let chosen: Candidate;
 
-  // Pick from the best candidates
-  const topPool = candidates.slice(0, Math.min(12, candidates.length));
-  const chosen = topPool.length > 0
-    ? topPool[Math.floor(Math.random() * topPool.length)]
-    : {
-        degreeId: 'deg_I',
-        degreeRoman: 'I',
-        degreeLabelRu: isMaj ? 'I (T)' : 'I (t)',
-        degreeNameRu: isMaj ? 'I ступень — Тоника (T5/3)' : 'I ступень — Тоника (t5/3)',
-        functionGroup: 'Тоника (T)',
-        functionalStrengthRu: 'Абсолютная устойчивость',
-        harmonicRoleRu: 'Главная опора лада',
-        usageMethodsRu: 'Утверждает тонику в начале и конце музыкальных фраз.',
-        functionSymbolRu: isMaj ? 'T5/3' : 't5/3',
-        degreeExplanationRu: `Тонический аккорд в ${keyNameRu}`,
-        chordQuality: (isMaj ? 'major' : 'minor') as 'major' | 'minor',
-        chordQualityRu: isMaj ? 'Мажорное трезвучие' : 'Минорное трезвучие',
-        inversionName: isMaj ? 'Основной вид (T5/3)' : 'Основной вид (t5/3)',
-        isRootPosition: true,
-        chordNotesMidi: isMaj ? [baseMidi, baseMidi + 4, baseMidi + 7] : [baseMidi, baseMidi + 3, baseMidi + 7],
-        rootMidi: baseMidi,
-        resolutionsScheme: TONAL_DEGREES[0]?.resolutionsScheme || [],
-        score: 100,
-      };
+  if (availableVoicingIds.length > 0) {
+    const chosenVoicingId = pickWeightedItem(
+      availableVoicingIds,
+      (id) => id,
+      stats,
+      spacedRepetitionEnabled
+    );
+    const topPicks = chordCandidatesMap.get(chosenVoicingId)!;
+    // Pick the best octave (or randomly among the top 2 octaves)
+    chosen = topPicks[Math.floor(Math.random() * Math.min(2, topPicks.length))];
+  } else {
+    // Ultimate fallback to tonic triad
+    chosen = {
+      degreeId: 'deg_I',
+      degreeRoman: 'I',
+      degreeLabelRu: isMaj ? 'I (T)' : 'I (t)',
+      degreeNameRu: isMaj ? 'I ступень — Тоника (T5/3)' : 'I ступень — Тоника (t5/3)',
+      functionGroup: 'Тоника (T)',
+      functionalStrengthRu: 'Абсолютная устойчивость',
+      harmonicRoleRu: 'Главная опора лада',
+      usageMethodsRu: 'Утверждает тонику в начале и конце музыкальных фраз.',
+      functionSymbolRu: isMaj ? 'T5/3' : 't5/3',
+      degreeExplanationRu: `Тонический аккорд в ${keyNameRu}`,
+      chordQuality: (isMaj ? 'major' : 'minor') as 'major' | 'minor',
+      chordQualityRu: isMaj ? 'Мажорное трезвучие' : 'Минорное трезвучие',
+      inversionName: isMaj ? 'Основной вид (T5/3)' : 'Основной вид (t5/3)',
+      isRootPosition: true,
+      voicingId: 'v_T53',
+      chordNotesMidi: isMaj ? [baseMidi, baseMidi + 4, baseMidi + 7] : [baseMidi, baseMidi + 3, baseMidi + 7],
+      rootMidi: baseMidi,
+      resolutionsScheme: TONAL_DEGREES[0]?.resolutionsScheme || [],
+      score: 100,
+    };
+  }
 
   const chordNotesMidi = chosen.chordNotesMidi;
   const chordNoteNames = chordNotesMidi.map((m) => CHROMATIC_NOTES_UP[((m % 12) + 12) % 12]);
@@ -1624,6 +2112,7 @@ export function generateSmartVoicingTask(
     functionSymbolRu: chosen.functionSymbolRu,
     degreeExplanationRu: chosen.degreeExplanationRu,
     isRootPosition: chosen.isRootPosition,
+    voicingId: chosen.voicingId,
     resolutionsScheme: chosen.resolutionsScheme,
     voicesBottomToTop,
   };
@@ -1642,6 +2131,10 @@ export function getTonalChordResolutionRows(task: SmartVoicingTask): {
   const satbNames = ['Бас (Б)', 'Тенор (Т)', 'Альт (А)', 'Сопрано (С)'];
   const voices = task.voicesBottomToTop;
 
+  // Extract clean degree names (e.g., 'I', 'II', 'IV', 'VI', 'VII')
+  const cleanDegrees = voices.map((v) => v.degreeRoman.replace(/[^\wIVX]/g, ''));
+  const hasDegreeVI = cleanDegrees.includes('VI');
+
   return voices.map((v, idx) => {
     const label = voices.length === 4 ? satbNames[idx] : `Голос ${idx + 1}`;
     const cleanDegree = v.degreeRoman.replace(/[^\wIVX]/g, '');
@@ -1657,15 +2150,32 @@ export function getTonalChordResolutionRows(task: SmartVoicingTask): {
     } else if (cleanDegree === 'IV') {
       toDegree = 'III';
       semitoneShift = -1;
-      ruleNote = 'септима ↓ в III';
+      ruleNote = 'септима / IV ст. ↓ в III';
     } else if (cleanDegree === 'II') {
-      toDegree = 'I';
-      semitoneShift = -2;
-      ruleNote = 'плавный шаг ↓ в I';
+      if (hasDegreeVI) {
+        // Strict Voice Leading Rule:
+        // When both II and VI degrees are present (e.g. II7, II4/3, II6/5, VII7, VII4/3),
+        // VI resolves DOWN to V (6 -> 5).
+        // To eliminate parallel fifths (II/VI -> I/V), degree II MUST resolve UP to III (+2 semitones)!
+        toDegree = 'III';
+        semitoneShift = 2;
+        ruleNote = 'шаг ↑ в III (избежание параллельных квинт)';
+      } else {
+        if (idx === 0) {
+          // Bass on II step (e.g. D4/3) -> resolves UP to III (T6)
+          toDegree = 'III';
+          semitoneShift = 2;
+          ruleNote = 'бас II ст. ↑ в III (в Т6)';
+        } else {
+          toDegree = 'I';
+          semitoneShift = -2;
+          ruleNote = 'плавный шаг ↓ в I';
+        }
+      }
     } else if (cleanDegree === 'VI') {
       toDegree = 'V';
-      semitoneShift = -1;
-      ruleNote = 'шаг ↓ в V';
+      semitoneShift = task.keyScaleMode === 'minor' ? -1 : -2;
+      ruleNote = 'VI ст. ↓ в V';
     } else if (cleanDegree === 'V') {
       if (idx === 0) {
         toDegree = 'I';
@@ -1674,16 +2184,16 @@ export function getTonalChordResolutionRows(task: SmartVoicingTask): {
       } else {
         toDegree = 'V';
         semitoneShift = 0;
-        ruleNote = 'общий тон';
+        ruleNote = 'общий тон V ст.';
       }
     } else if (cleanDegree === 'III') {
-      toDegree = 'I';
-      semitoneShift = -4;
-      ruleNote = 'в I';
+      toDegree = 'III';
+      semitoneShift = 0;
+      ruleNote = 'устойчивый тон III ст.';
     } else {
       toDegree = 'I';
       semitoneShift = 0;
-      ruleNote = 'устойчивый тон';
+      ruleNote = 'общий тон (тоника)';
     }
 
     const fromMidi = v.midi;
@@ -1695,9 +2205,256 @@ export function getTonalChordResolutionRows(task: SmartVoicingTask): {
       fromNote: v.noteNameWithOctave,
       fromDegree: v.degreeRoman,
       toNote: toNoteName,
-      toDegree: toDegree,
+      toDegree,
       ruleNote,
     };
   });
 }
+
+function resolveVoiceMidi(
+  midi: number,
+  tonicPitch: number,
+  isMaj: boolean,
+  isBass: boolean,
+  isK64Target: boolean
+): number {
+  const pitch = ((midi % 12) + 12) % 12;
+  const semitonesFromTonic = ((pitch - tonicPitch) % 12 + 12) % 12;
+
+  // Specific classical resolution for Cadential 6/4 (K6/4 -> D7 / D5/3)
+  if (isK64Target) {
+    if (isBass || semitonesFromTonic === 7) {
+      // Bass on V remains stationary on V
+      return midi;
+    }
+    if (semitonesFromTonic === 0) {
+      // Degree I (fourth above bass) steps down to VII (leading tone)
+      return midi - 1;
+    }
+    if (semitonesFromTonic === 4 || semitonesFromTonic === 3) {
+      // Degree III (sixth above bass) steps down to II
+      return midi - (isMaj ? 2 : 1);
+    }
+    return midi;
+  }
+
+  if (isBass) {
+    // Bass voice leading
+    if (semitonesFromTonic === 7) {
+      // V degree -> jumps to I
+      return midi >= 53 ? midi - 7 : midi + 5;
+    }
+    if (semitonesFromTonic === 11) {
+      // VII degree (e.g. D6/5, VII7) -> steps up to I
+      return midi + 1;
+    }
+    if (semitonesFromTonic === 2) {
+      // II degree (e.g. D4/3, II6) -> steps up to III (T6)
+      return midi + (isMaj ? 2 : 1);
+    }
+    if (semitonesFromTonic === 5) {
+      // IV degree (e.g. D2, S5/3) -> steps down to III (T6)
+      return midi - (isMaj ? 1 : 2);
+    }
+    if (semitonesFromTonic === 8 || semitonesFromTonic === 9) {
+      // VI degree (e.g. VI5/3) -> resolves to I
+      return midi - semitonesFromTonic;
+    }
+    // Default bass resolves to nearest tonic root
+    return midi - semitonesFromTonic;
+  }
+
+  // Upper voices (Tenor, Alto, Soprano)
+  if (semitonesFromTonic === 11) {
+    // VII degree (leading tone) -> steps up to I
+    return midi + 1;
+  }
+  if (semitonesFromTonic === 5) {
+    // IV degree (7th of D7 or S) -> steps down to III
+    return midi - (isMaj ? 1 : 2);
+  }
+  if (semitonesFromTonic === 2) {
+    // II degree -> steps down to I
+    return midi - 2;
+  }
+  if (semitonesFromTonic === 8 || semitonesFromTonic === 9) {
+    // VI degree -> steps down to V
+    return midi - (isMaj ? 2 : 1);
+  }
+  if (semitonesFromTonic === 7) {
+    // V degree -> stays on V (common tone)
+    return midi;
+  }
+  if (semitonesFromTonic === 4 || semitonesFromTonic === 3) {
+    // III degree -> stays on III (common tone)
+    return midi;
+  }
+  if (semitonesFromTonic === 0) {
+    // I degree -> stays on I (common tone)
+    return midi;
+  }
+  return midi - semitonesFromTonic;
+}
+
+/**
+ * Transforms a SmartVoicingTask into a RealizedProgression for VexFlow rendering
+ * in ProgressionGrandStaff.
+ */
+export function createProgressionFromTonalTask(task: SmartVoicingTask): RealizedProgression {
+  const isMaj = task.keyScaleMode === 'major';
+  const tonicPitch = ((task.baseMidi % 12) + 12) % 12;
+
+  // 1. Determine Step 0 SATB midis:
+  const rawMidis = [...task.chordNotesMidi].sort((a, b) => a - b);
+  let midisSATB0: [number, number, number, number];
+
+  if (rawMidis.length === 4) {
+    midisSATB0 = [rawMidis[0], rawMidis[1], rawMidis[2], rawMidis[3]];
+  } else if (rawMidis.length === 3) {
+    const [b, m, s] = rawMidis;
+    let doubled = b + 12;
+    if (task.voicingId === 'v_K64') {
+      // In 6/4 (cadential 6/4), double the 5th (bass)
+      doubled = b + 12;
+    } else if (task.isRootPosition) {
+      // In root position 5/3 triads, double the root:
+      const rootPitch = ((task.chordRootMidi % 12) + 12) % 12;
+      if (((b % 12) + 12) % 12 === rootPitch) {
+        doubled = b + 12;
+      } else if (((m % 12) + 12) % 12 === rootPitch) {
+        doubled = m > 64 ? m - 12 : m + 12;
+      } else {
+        doubled = s > 67 ? s - 12 : s + 12;
+      }
+    } else {
+      doubled = b + 12;
+    }
+    const notes4 = [...rawMidis, doubled].sort((a, b) => a - b);
+    midisSATB0 = [notes4[0], notes4[1], notes4[2], notes4[3]];
+  } else if (rawMidis.length > 4) {
+    midisSATB0 = [rawMidis[0], rawMidis[1], rawMidis[2], rawMidis[rawMidis.length - 1]];
+  } else {
+    const b = rawMidis[0] ?? 48;
+    midisSATB0 = [b, b + 7, b + 12, b + 16];
+  }
+
+  // Ensure bass is seated in classical bass register (MIDI <= 55, G3 or lower)
+  if (midisSATB0[0] >= 57) {
+    midisSATB0[0] -= 12;
+  }
+
+  const getNoteNameWithOctave = (midi: number) => {
+    const pitch = ((midi % 12) + 12) % 12;
+    const noteName = CHROMATIC_NOTES_UP[pitch];
+    const octave = Math.floor(midi / 12) - 1;
+    return `${noteName}${octave}`;
+  };
+
+  const getDegreeRoman = (m: number) => {
+    const p = ((m % 12) + 12) % 12;
+    const diff = ((p - tonicPitch) % 12 + 12) % 12;
+    const majDegs = ['I', 'bII', 'II', 'bIII', 'III', 'IV', '#IV', 'V', 'bVI', 'VI', 'bVII', 'VII'];
+    const minDegs = ['I', 'bII', 'II', 'III', 'III', 'IV', '#IV', 'V', 'VI', 'VI', 'VII', 'VII'];
+    return isMaj ? majDegs[diff] : minDegs[diff];
+  };
+
+  const step0: RealizedProgressionStep = {
+    symbol: task.functionSymbolRu || task.chordName,
+    degreeRoman: task.degreeRoman || 'I',
+    nameRu: task.chordName,
+    midisSATB: midisSATB0,
+    noteNamesSATB: [
+      getNoteNameWithOctave(midisSATB0[0]),
+      getNoteNameWithOctave(midisSATB0[1]),
+      getNoteNameWithOctave(midisSATB0[2]),
+      getNoteNameWithOctave(midisSATB0[3]),
+    ],
+    voiceDegreesRu: {
+      soprano: getDegreeRoman(midisSATB0[3]),
+      alto: getDegreeRoman(midisSATB0[2]),
+      tenor: getDegreeRoman(midisSATB0[1]),
+      bass: getDegreeRoman(midisSATB0[0]),
+    },
+  };
+
+  // 2. Determine Step 1 (Classical Resolution):
+  const isAlreadyTonicTriad =
+    task.isRootPosition &&
+    (task.degreeId === 'deg_I' || task.functionSymbolRu === 'T5/3' || task.functionSymbolRu === 't5/3');
+
+  const steps: RealizedProgressionStep[] = [step0];
+
+  if (!isAlreadyTonicTriad) {
+    const isK64 = task.voicingId === 'v_K64' || task.functionSymbolRu.includes('K6/4') || task.functionSymbolRu.includes('k6/4');
+    const resMidisSATB: [number, number, number, number] = [
+      resolveVoiceMidi(midisSATB0[0], tonicPitch, isMaj, true, isK64),
+      resolveVoiceMidi(midisSATB0[1], tonicPitch, isMaj, false, isK64),
+      resolveVoiceMidi(midisSATB0[2], tonicPitch, isMaj, false, isK64),
+      resolveVoiceMidi(midisSATB0[3], tonicPitch, isMaj, false, isK64),
+    ];
+
+    let targetSymbol = isMaj ? 'T5/3' : 't5/3';
+    if (isK64) {
+      targetSymbol = task.resolutionsScheme?.[0]?.formula || 'D7';
+    } else if (task.functionSymbolRu === 'D2' || task.functionSymbolRu === 'VII2') {
+      targetSymbol = isMaj ? 'T6' : 't6';
+    } else if (task.resolutionsScheme?.[0]?.formula) {
+      targetSymbol = task.resolutionsScheme[0].formula;
+    }
+
+    const step1: RealizedProgressionStep = {
+      symbol: targetSymbol,
+      degreeRoman: isK64 ? 'V' : 'I',
+      nameRu: isK64
+        ? 'Доминанта (D)'
+        : isMaj
+        ? 'Тоническое трезвучие'
+        : 'Тоническое минорное трезвучие',
+      midisSATB: resMidisSATB,
+      noteNamesSATB: [
+        getNoteNameWithOctave(resMidisSATB[0]),
+        getNoteNameWithOctave(resMidisSATB[1]),
+        getNoteNameWithOctave(resMidisSATB[2]),
+        getNoteNameWithOctave(resMidisSATB[3]),
+      ],
+      voiceDegreesRu: {
+        soprano: getDegreeRoman(resMidisSATB[3]),
+        alto: getDegreeRoman(resMidisSATB[2]),
+        tenor: getDegreeRoman(resMidisSATB[1]),
+        bass: getDegreeRoman(resMidisSATB[0]),
+      },
+    };
+
+    steps.push(step1);
+  }
+
+  const dummyTemplate: HarmonicProgressionTemplate = {
+    id: `tonal_${task.voicingId || 'chord'}`,
+    nameRu: task.chordName,
+    formula: task.functionSymbolRu || task.chordName,
+    category: 'cadential',
+    categoryNameRu: 'Тональное созвучие',
+    scaleMode: task.keyScaleMode,
+    bassMotionRu: task.chordInversionRu || 'Басовый голос',
+    sopranoMotionRu: 'Мелодическое положение',
+    voiceLeadingExplanationRu: task.degreeExplanationRu || '',
+    usageContextRu: task.usageMethodsRu || '',
+    steps: [],
+  };
+
+  return {
+    template: dummyTemplate,
+    tonicNoteName: task.keyTonicNoteName,
+    tonicPitch,
+    scaleMode: task.keyScaleMode,
+    keyNameRu: task.keyNameRu,
+    revealed: true,
+    voiceLeadingValidation: {
+      isValid: true,
+      warnings: [],
+    },
+    steps,
+  };
+}
+
 
