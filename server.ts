@@ -243,13 +243,13 @@ async function startServer() {
         ]
       });
 
-      const records = reports.map(r => ({
+      const records = reports.map((r: any) => ({
         id: r.id,
         description: r.description,
         currentSection: r.currentSection,
         recentActions: JSON.stringify(r.recentActions),
         userAgent: r.userAgent,
-        createdAt: r.createdAt.toISOString(),
+        createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
         status: r.status
       }));
 

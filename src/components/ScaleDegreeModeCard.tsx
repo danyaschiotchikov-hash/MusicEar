@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PlaybackSettings } from '../types';
-import { ScaleDegreeTask } from '../audio/solfegeHelper';
+import { ScaleDegreeTask, RUSSIAN_NOTE_NAMES_BY_SEMITONE } from '../audio/solfegeHelper';
 import { TONIC_NOTE_OPTIONS } from '../data/musicData';
+import { audioEngine } from '../audio/audioEngine';
 import { MarathonProgressBar } from './MarathonProgressBar';
 import {
   Volume2,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   ArrowRight,
   RotateCw,
+  Crown,
 } from 'lucide-react';
 
 interface ScaleDegreeModeCardProps {
@@ -22,8 +24,8 @@ interface ScaleDegreeModeCardProps {
   onPlayTaskNote: () => void;
   onPlayCadence: (tonic: string, mode: 'major' | 'minor') => void;
   onPlayResolution: () => void;
-  onSelectAnswer: (degreeId: string) => void;
-  onNewTask: (forceCadence?: boolean) => void;
+  onSelectAnswer: (degreeId: string, semitone?: number, keyMidi?: number) => void;
+  onNewTask: (forceCadence?: boolean, overrideTwoNotes?: boolean) => void;
   onSettingsChange: (updated: Partial<PlaybackSettings>) => void;
   onToggleDrone?: () => void;
   isDroneActive?: boolean;
@@ -71,18 +73,18 @@ const SEMITONE_TO_DEGREE_ID: Record<number, string> = {
 interface KeyItem {
   relativeSemitone: number;
   pitchClass: number;
+  midi: number;
   isWhite: boolean;
   isActive: boolean;
   isTonic: boolean;
   degreeId: string;
   degreeLabel: string;
+  noteNameRu: string;
   isStable: boolean;
 }
 
 function getDegreeMeta(semitones: number, isMajor: boolean): { label: string; isStable: boolean; fullRu: string } {
   const norm = ((semitones % 12) + 12) % 12;
-  const third = isMajor ? 4 : 3;
-  const sixth = isMajor ? 9 : 8;
 
   switch (norm) {
     case 0:
@@ -144,6 +146,7 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
   onToggleTwoNotes,
 }) => {
   const [showSettings, setShowSettings] = useState(false);
+  const [pressedKeyMidi, setPressedKeyMidi] = useState<number | null>(null);
 
   const activeTonicNote =
     settings.tonalRootNote && settings.tonalRootNote !== 'random'
@@ -157,31 +160,37 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
     const minS = isTonicBlackKey ? -1 : 0;
     const maxS = isTonicBlackKey ? 13 : 12;
 
+    const baseTonicMidi = task?.tonicMidi ?? (60 + tonicPitchClass);
+
     const allKeys: KeyItem[] = [];
     for (let s = minS; s <= maxS; s++) {
       const pitchClass = (tonicPitchClass + s + 120) % 12;
+      const midi = baseTonicMidi + s;
       const isWhite = WHITE_PITCH_CLASSES.has(pitchClass);
       const isActive = s >= 0 && s <= 12;
       const isTonic = s === 0 || s === 12;
       const normS = ((s % 12) + 12) % 12;
       const degreeId = SEMITONE_TO_DEGREE_ID[normS];
       const meta = getDegreeMeta(normS, isMajor);
+      const noteNameRu = RUSSIAN_NOTE_NAMES_BY_SEMITONE[pitchClass] ?? '';
 
       allKeys.push({
         relativeSemitone: s,
         pitchClass,
+        midi,
         isWhite,
         isActive,
         isTonic,
         degreeId,
         degreeLabel: meta.label,
+        noteNameRu,
         isStable: meta.isStable,
       });
     }
 
     const whiteKeysList = allKeys.filter((k) => k.isWhite);
     const totalWhite = whiteKeysList.length;
-    const blackWidthPercent = Math.max(7, Math.min(10, 80 / totalWhite));
+    const blackWidthPercent = Math.max(7.5, Math.min(10.5, 82 / totalWhite));
 
     const blackKeysList = allKeys
       .filter((k) => !k.isWhite)
@@ -204,7 +213,7 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
       whiteKeys: whiteKeysList,
       blackKeys: blackKeysList,
     };
-  }, [tonicPitchClass, isTonicBlackKey, isMajor]);
+  }, [tonicPitchClass, isTonicBlackKey, isMajor, task?.tonicMidi]);
 
   if (!task) {
     return (
@@ -224,17 +233,45 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
   const targetOffset = ((task.targetMidi % 12) - (task.tonicMidi % 12) + 12) % 12;
   const secondTargetOffset = task.secondTargetMidi ? ((task.secondTargetMidi % 12) - (task.tonicMidi % 12) + 12) % 12 : null;
 
-  const handleKeyClick = (keyItem: KeyItem) => {
+  // Check if first note or second note is guessed
+  const isFirstNoteGuessed =
+    task.userAnswerIds?.includes(task.id) ||
+    (task.userAnswerIds && task.userAnswerIds.length > 0 && isRevealed);
+  const isSecondNoteGuessed =
+    task.secondDegreeId && task.userAnswerIds?.includes(task.secondDegreeId);
+
+  const handleKeyTouch = (keyItem: KeyItem, e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!keyItem.isActive) return;
+
+    // Visual press animation
+    setPressedKeyMidi(keyItem.midi);
+    setTimeout(() => {
+      setPressedKeyMidi((prev) => (prev === keyItem.midi ? null : prev));
+    }, 220);
+
+    // Audio feedback: play clicked note immediately so user hears the pitch
+    try {
+      const ctx = audioEngine.getContext();
+      audioEngine.playSingleNote(keyItem.midi, ctx.currentTime, 0.75, 1.15, settings);
+    } catch (err) {
+      console.warn('Audio play error', err);
+    }
+
     if (isRevealed) {
       onPlayTaskNote();
       return;
     }
-    onSelectAnswer(keyItem.degreeId);
+
+    const normS = ((keyItem.relativeSemitone % 12) + 12) % 12;
+    onSelectAnswer(keyItem.degreeId, normS, keyItem.midi);
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto space-y-3 pb-36">
+    <div className="w-full max-w-xl mx-auto space-y-3 pb-36 select-none">
       {/* Marathon Progress Bar */}
       <MarathonProgressBar
         marathonStreak={degreeMarathonStreak}
@@ -258,7 +295,7 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
                   onToggleTwoNotes(false);
                 }
               }}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${
                 !isTwoNotes
                   ? 'bg-indigo-600 text-white shadow-xs'
                   : 'text-slate-400 hover:text-slate-200'
@@ -273,13 +310,14 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
                   onToggleTwoNotes(true);
                 }
               }}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
                 isTwoNotes
                   ? 'bg-indigo-600 text-white shadow-xs'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              2 звука
+              <span>2 звука</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
             </button>
           </div>
 
@@ -293,7 +331,7 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
                   setTimeout(() => onNewTask(), 50);
                 }
               }}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                 degreeType === 'diatonic'
                   ? 'bg-slate-800 text-slate-100 shadow-xs'
                   : 'text-slate-400 hover:text-slate-200'
@@ -309,7 +347,7 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
                   setTimeout(() => onNewTask(), 50);
                 }
               }}
-              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
                 degreeType === 'chromatic'
                   ? 'bg-slate-800 text-slate-100 shadow-xs'
                   : 'text-slate-400 hover:text-slate-200'
@@ -321,7 +359,7 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
 
           {/* Current Key Indicator & Settings */}
           <div className="flex items-center gap-2">
-            <div className="px-2.5 py-1 bg-slate-950/80 border border-slate-800 rounded-lg text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
+            <div className="px-2.5 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5 shadow-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
               <span>{task.keyNameRu}</span>
             </div>
@@ -434,153 +472,264 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Fixed Bottom Container for Keyboard and Controls */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 border-t border-slate-800 backdrop-blur-sm pb-safe pt-2 px-3">
-        <div className="max-w-xl mx-auto space-y-2.5">
-          {/* Degree Answer Buttons Grid */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 shadow-xs">
-            <div className={`grid ${degreeType === 'chromatic' ? 'grid-cols-4 sm:grid-cols-6' : 'grid-cols-4 sm:grid-cols-7'} gap-1.5`}>
-              {(degreeType === 'chromatic'
-                ? [
-                    { id: 'deg_I', roman: 'I', solf: 'До' },
-                    { id: 'deg_bII', roman: '♭II', solf: '♭Ре' },
-                    { id: 'deg_II', roman: 'II', solf: 'Ре' },
-                    { id: 'deg_bIII', roman: '♭III', solf: '♭Ми' },
-                    { id: 'deg_III', roman: 'III', solf: 'Ми' },
-                    { id: 'deg_IV', roman: 'IV', solf: 'Фа' },
-                    { id: 'deg_bV', roman: '♭V', solf: '♭Соль' },
-                    { id: 'deg_V', roman: 'V', solf: 'Соль' },
-                    { id: 'deg_bVI', roman: '♭VI', solf: '♭Ля' },
-                    { id: 'deg_VI', roman: 'VI', solf: 'Ля' },
-                    { id: 'deg_bVII', roman: '♭VII', solf: '♭Си' },
-                    { id: 'deg_VII', roman: 'VII', solf: 'Си' },
-                  ]
-                : [
-                    { id: 'deg_I', roman: 'I', solf: 'Тоника' },
-                    { id: 'deg_II', roman: 'II', solf: 'II ступ.' },
-                    { id: 'deg_III', roman: 'III', solf: 'Медианта' },
-                    { id: 'deg_IV', roman: 'IV', solf: 'Субдом.' },
-                    { id: 'deg_V', roman: 'V', solf: 'Доминанта' },
-                    { id: 'deg_VI', roman: 'VI', solf: 'VI ступ.' },
-                    { id: 'deg_VII', roman: 'VII', solf: 'Вводный' },
-                  ]
-              ).map((deg) => {
-                const isTarget = isRevealed && (deg.id === task.id || deg.id === task.secondDegreeId);
-                const isGuessed = task.userAnswerIds?.includes(deg.id);
-                const isIncorrect = task.incorrectAnswers?.includes(deg.id);
-
-                let btnBg = 'bg-slate-950/80 hover:bg-slate-800 border-slate-800 text-slate-200';
-                if (isGuessed) {
-                  btnBg = 'bg-indigo-600 border-indigo-500 text-white font-bold shadow-sm';
-                }
-                if (isTarget) {
-                  btnBg = 'bg-emerald-600 border-emerald-500 text-white font-bold shadow-sm';
-                } else if (isIncorrect) {
-                  btnBg = 'bg-rose-950/80 border-rose-800 text-rose-300';
-                }
-
-                return (
-                  <button
-                    key={deg.id}
-                    type="button"
-                    onClick={() => !isRevealed && onSelectAnswer(deg.id)}
-                    disabled={isRevealed}
-                    className={`py-2 px-1 rounded-lg border text-xs font-semibold flex flex-col items-center justify-center transition active:scale-95 cursor-pointer ${btnBg}`}
-                  >
-                    <span className="text-sm font-bold">{deg.roman}</span>
-                    <span className="text-[10px] opacity-80 truncate max-w-full">{deg.solf}</span>
-                  </button>
-                );
-              })}
+      {/* 3. Task Note Progress Banner (For 1 Note and 2 Notes Modes) */}
+      {isTwoNotes ? (
+        <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Volume2 className={`w-4 h-4 text-indigo-400 ${isPlaying ? 'animate-bounce' : ''}`} />
+              <span className="text-xs font-bold text-slate-200">
+                {isRevealed
+                  ? 'Оба звука найдены!'
+                  : isFirstNoteGuessed
+                  ? 'Первый звук угадан! Найдите второй:'
+                  : 'Слушайте 2 звука и найдите их на пианино:'}
+              </span>
             </div>
+            <span className="text-[11px] font-mono text-indigo-300 bg-indigo-950/60 border border-indigo-800/80 px-2 py-0.5 rounded-full">
+              {isRevealed ? '2 / 2 ✓' : isFirstNoteGuessed ? '1 / 2' : '0 / 2'}
+            </span>
           </div>
 
-          {/* 3. Interactive Piano Keyboard */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 sm:p-4 shadow-xs">
-            <div className="relative w-full h-36 sm:h-40 bg-slate-950 rounded-lg p-1 border border-slate-800/90 overflow-hidden select-none touch-none">
-              {/* White Keys */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Slot 1 */}
+            <div
+              className={`p-2.5 rounded-lg border text-center transition-all ${
+                isFirstNoteGuessed || isRevealed
+                  ? 'bg-emerald-950/60 border-emerald-500/70 text-emerald-200 shadow-sm'
+                  : 'bg-slate-950/80 border-slate-800 text-slate-400'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase tracking-wider mb-0.5 opacity-80">
+                Звук 1
+              </div>
+              <div className="text-xs font-bold truncate">
+                {isFirstNoteGuessed || isRevealed ? (
+                  <span className="flex items-center justify-center gap-1 text-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{task.degreeNameRu}</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-500">определите на клавиатуре...</span>
+                )}
+              </div>
+            </div>
+
+            {/* Slot 2 */}
+            <div
+              className={`p-2.5 rounded-lg border text-center transition-all ${
+                isRevealed
+                  ? 'bg-emerald-950/60 border-emerald-500/70 text-emerald-200 shadow-sm'
+                  : isFirstNoteGuessed
+                  ? 'bg-indigo-950/60 border-indigo-500/70 text-indigo-200 shadow-sm animate-pulse'
+                  : 'bg-slate-950/80 border-slate-800 text-slate-500'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase tracking-wider mb-0.5 opacity-80">
+                Звук 2
+              </div>
+              <div className="text-xs font-bold truncate">
+                {isRevealed && task.secondDegreeNameRu ? (
+                  <span className="flex items-center justify-center gap-1 text-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{task.secondDegreeNameRu}</span>
+                  </span>
+                ) : isFirstNoteGuessed ? (
+                  <span className="text-indigo-300 font-semibold">нажмите 2-ю ступень</span>
+                ) : (
+                  <span className="text-slate-500">ожидание...</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900/50 border border-slate-800/80 rounded-xl px-3 py-2 flex items-center justify-between text-xs text-slate-300">
+          <div className="flex items-center gap-2">
+            <Volume2 className={`w-3.5 h-3.5 text-indigo-400 ${isPlaying ? 'animate-bounce' : ''}`} />
+            <span>Нажмите нужную клавишу на рояле для ответа:</span>
+          </div>
+          <span className="text-[11px] font-mono text-amber-300/90 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+            Тоника: I
+          </span>
+        </div>
+      )}
+
+      {/* Fixed Bottom Container for Keyboard and Controls */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 border-t border-slate-800 backdrop-blur-md pb-safe pt-2.5 px-3 shadow-2xl">
+        <div className="max-w-xl mx-auto space-y-2.5">
+          {/* Interactive Piano Keyboard (Redesigned with Tactile Grand Piano Aesthetics) */}
+          <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-2.5 sm:p-3 shadow-xl">
+            <div
+              className="relative w-full h-40 sm:h-44 bg-slate-950 rounded-xl p-1 border border-slate-800 overflow-hidden select-none touch-none shadow-inner"
+              style={{ touchAction: 'none' }}
+            >
+              {/* White Keys Row */}
               <div className="flex w-full h-full gap-0.5">
                 {whiteKeys.map((keyItem) => {
                   const normS = ((keyItem.relativeSemitone % 12) + 12) % 12;
                   const isTarget = isRevealed && keyItem.isActive && (normS === targetOffset || (secondTargetOffset !== null && normS === secondTargetOffset));
                   const isUserGuessed = !isRevealed && task.userAnswerIds?.includes(keyItem.degreeId);
                   const isIncorrectAttempt = keyItem.isActive && task.incorrectAnswers?.includes(keyItem.degreeId);
+                  const isPhysicalPressed = pressedKeyMidi === keyItem.midi;
 
-                  let keyBg = keyItem.isActive
-                    ? 'bg-slate-200 hover:bg-white text-slate-800 border-slate-300 cursor-pointer active:bg-slate-300'
-                    : 'bg-slate-300/30 opacity-30 border-slate-400/20 cursor-default';
+                  // Base white key styling
+                  let keyStyle =
+                    'bg-gradient-to-b from-white via-slate-50 to-slate-200 text-slate-800 border-x border-slate-300/80 border-b-2 border-b-slate-400/90 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.3),inset_0_-3px_0_rgba(0,0,0,0.1)] active:translate-y-1';
 
-                  if (keyItem.isActive && keyItem.isTonic && !isTarget && !isIncorrectAttempt && !isUserGuessed) {
-                    keyBg = 'bg-slate-100 hover:bg-white text-slate-900 border-slate-400 font-bold';
-                  }
-
-                  if (isUserGuessed) {
-                    keyBg = 'bg-indigo-600 text-white border-indigo-500 font-bold';
-                  }
-
-                  if (isTarget) {
-                    keyBg = 'bg-emerald-600 text-white border-emerald-500 font-bold';
+                  if (!keyItem.isActive) {
+                    keyStyle =
+                      'bg-slate-300/20 opacity-25 border-slate-700/20 text-slate-600 cursor-default pointer-events-none';
+                  } else if (isPhysicalPressed) {
+                    keyStyle =
+                      'bg-gradient-to-b from-slate-100 to-slate-300 text-slate-900 border-slate-400 translate-y-1.5 shadow-[inset_0_4px_6px_rgba(0,0,0,0.25)]';
+                  } else if (isTarget) {
+                    keyStyle =
+                      'bg-gradient-to-b from-emerald-500 to-emerald-600 text-white border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.7),inset_0_-3px_0_rgba(0,0,0,0.2)] font-black z-10';
+                  } else if (isUserGuessed) {
+                    keyStyle =
+                      'bg-gradient-to-b from-indigo-500 to-indigo-600 text-white border-indigo-400 shadow-[0_0_16px_rgba(99,102,241,0.6),inset_0_-3px_0_rgba(0,0,0,0.2)] font-black z-10';
                   } else if (isIncorrectAttempt) {
-                    keyBg = 'bg-rose-950 text-rose-200 border-rose-800 font-semibold';
+                    keyStyle =
+                      'bg-gradient-to-b from-rose-900 to-rose-950 text-rose-200 border-rose-700 shadow-inner font-bold';
+                  } else if (keyItem.isTonic) {
+                    keyStyle =
+                      'bg-gradient-to-b from-amber-50 via-slate-50 to-amber-100/80 text-slate-900 border-amber-300/70 border-b-2 border-b-amber-400 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.3),inset_0_-3px_0_rgba(251,191,36,0.25)] font-bold';
                   }
 
                   return (
                     <button
                       key={`white_${keyItem.relativeSemitone}`}
                       type="button"
-                      onClick={() => handleKeyClick(keyItem)}
+                      onMouseDown={(e) => handleKeyTouch(keyItem, e)}
+                      onTouchStart={(e) => handleKeyTouch(keyItem, e)}
                       disabled={!keyItem.isActive}
-                      className={`flex-1 h-full rounded-b-md border border-b-2 transition-colors duration-100 flex flex-col justify-end items-center pb-2 relative ${keyBg}`}
-                      aria-label="Клавиша"
+                      className={`flex-1 h-full rounded-b-xl transition-all duration-75 flex flex-col justify-end items-center pb-2.5 relative cursor-pointer select-none ${keyStyle}`}
+                      title={`${keyItem.degreeLabel} (${keyItem.noteNameRu})`}
+                      aria-label={`${keyItem.degreeLabel} ${keyItem.noteNameRu}`}
                     >
-                      {keyItem.isActive && keyItem.isTonic && !isRevealed && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80 mb-0.5" />
+                      {/* Tonic Marker Pin */}
+                      {keyItem.isActive && keyItem.isTonic && (
+                        <div className="absolute top-1.5 left-1/2 -translate-x-1/2 flex items-center justify-center">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.9)] ring-1 ring-amber-300" />
+                        </div>
+                      )}
+
+                      {/* Note and Degree Labels */}
+                      {keyItem.isActive && (
+                        <div className="flex flex-col items-center pointer-events-none leading-none gap-0.5">
+                          {/* Russian Note Name */}
+                          <span
+                            className={`text-[9px] sm:text-[10px] font-medium tracking-tight ${
+                              isTarget || isUserGuessed
+                                ? 'text-white/90'
+                                : isIncorrectAttempt
+                                ? 'text-rose-300'
+                                : 'text-slate-500'
+                            }`}
+                          >
+                            {keyItem.noteNameRu}
+                          </span>
+
+                          {/* Roman Degree Label */}
+                          <span
+                            className={`text-xs sm:text-sm font-extrabold tracking-tighter ${
+                              isTarget || isUserGuessed
+                                ? 'text-white drop-shadow-sm'
+                                : keyItem.isTonic
+                                ? 'text-amber-800'
+                                : 'text-slate-800'
+                            }`}
+                          >
+                            {keyItem.degreeLabel}
+                          </span>
+                        </div>
                       )}
                     </button>
                   );
                 })}
               </div>
 
-              {/* Black Keys */}
+              {/* Black Keys Layer */}
               {blackKeys.map((keyItem) => {
                 const normS = ((keyItem.relativeSemitone % 12) + 12) % 12;
                 const isTarget = isRevealed && keyItem.isActive && (normS === targetOffset || (secondTargetOffset !== null && normS === secondTargetOffset));
                 const isUserGuessed = !isRevealed && task.userAnswerIds?.includes(keyItem.degreeId);
                 const isIncorrectAttempt = keyItem.isActive && task.incorrectAnswers?.includes(keyItem.degreeId);
+                const isPhysicalPressed = pressedKeyMidi === keyItem.midi;
 
-                let keyBg = keyItem.isActive
-                  ? 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300 cursor-pointer active:bg-slate-950'
-                  : 'bg-slate-950 opacity-40 border-slate-800 cursor-default';
+                // Base black key styling
+                let keyStyle =
+                  'bg-gradient-to-b from-slate-800 via-slate-900 to-black text-slate-200 border-x border-slate-700/80 border-b-2 border-b-slate-600 shadow-[0_6px_12px_rgba(0,0,0,0.8),inset_0_-3px_0_rgba(255,255,255,0.08)] active:translate-y-1';
 
-                if (keyItem.isActive && keyItem.isTonic && !isTarget && !isIncorrectAttempt && !isUserGuessed) {
-                  keyBg = 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-amber-300 font-bold';
-                }
-
-                if (isUserGuessed) {
-                  keyBg = 'bg-indigo-600 border-indigo-500 text-white font-bold';
-                }
-
-                if (isTarget) {
-                  keyBg = 'bg-emerald-600 border-emerald-500 text-white font-bold';
+                if (!keyItem.isActive) {
+                  keyStyle =
+                    'bg-slate-950 opacity-30 border-slate-800 cursor-default pointer-events-none';
+                } else if (isPhysicalPressed) {
+                  keyStyle =
+                    'bg-gradient-to-b from-slate-950 to-black text-white border-slate-600 translate-y-1.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.7)]';
+                } else if (isTarget) {
+                  keyStyle =
+                    'bg-gradient-to-b from-emerald-600 to-emerald-800 text-white border-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.8),inset_0_-3px_0_rgba(0,0,0,0.4)] font-black z-30';
+                } else if (isUserGuessed) {
+                  keyStyle =
+                    'bg-gradient-to-b from-indigo-600 to-indigo-800 text-white border-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.7),inset_0_-3px_0_rgba(0,0,0,0.4)] font-black z-30';
                 } else if (isIncorrectAttempt) {
-                  keyBg = 'bg-rose-950 border-rose-800 text-rose-300 font-semibold';
+                  keyStyle =
+                    'bg-gradient-to-b from-rose-950 to-black text-rose-300 border-rose-700 shadow-inner font-bold';
+                } else if (keyItem.isTonic) {
+                  keyStyle =
+                    'bg-gradient-to-b from-amber-950 via-slate-900 to-black text-amber-300 border-amber-500/70 border-b-2 border-b-amber-500 shadow-[0_6px_12px_rgba(0,0,0,0.8),inset_0_-3px_0_rgba(251,191,36,0.2)] font-bold';
                 }
 
                 return (
                   <button
                     key={`black_${keyItem.relativeSemitone}`}
                     type="button"
-                    onClick={() => handleKeyClick(keyItem)}
+                    onMouseDown={(e) => handleKeyTouch(keyItem, e)}
+                    onTouchStart={(e) => handleKeyTouch(keyItem, e)}
                     disabled={!keyItem.isActive}
                     style={{
                       left: `${keyItem.leftPercent}%`,
                       width: `${keyItem.widthPercent}%`,
                     }}
-                    className={`absolute top-1 h-[60%] rounded-b-md border-x border-b transition-colors duration-100 z-10 flex flex-col justify-end items-center pb-1.5 ${keyBg}`}
-                    aria-label="Черная клавиша"
+                    className={`absolute top-1 h-[62%] rounded-b-lg transition-all duration-75 z-20 flex flex-col justify-end items-center pb-2 cursor-pointer select-none ${keyStyle}`}
+                    title={`${keyItem.degreeLabel} (${keyItem.noteNameRu})`}
+                    aria-label={`${keyItem.degreeLabel} ${keyItem.noteNameRu}`}
                   >
-                    {keyItem.isActive && keyItem.isTonic && !isRevealed && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400/90 mb-0.5" />
+                    {/* Tonic marker */}
+                    {keyItem.isActive && keyItem.isTonic && (
+                      <div className="absolute top-1 left-1/2 -translate-x-1/2 flex items-center justify-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)]" />
+                      </div>
+                    )}
+
+                    {/* Degree Label on Black Keys */}
+                    {keyItem.isActive && (
+                      <div className="flex flex-col items-center pointer-events-none leading-none gap-0.5">
+                        <span
+                          className={`text-[8px] sm:text-[9px] font-mono font-medium ${
+                            isTarget || isUserGuessed
+                              ? 'text-white/90'
+                              : isIncorrectAttempt
+                              ? 'text-rose-300'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {keyItem.noteNameRu}
+                        </span>
+                        <span
+                          className={`text-[10px] sm:text-xs font-bold tracking-tighter ${
+                            isTarget || isUserGuessed
+                              ? 'text-white'
+                              : keyItem.isTonic
+                              ? 'text-amber-400'
+                              : 'text-slate-200'
+                          }`}
+                        >
+                          {keyItem.degreeLabel}
+                        </span>
+                      </div>
                     )}
                   </button>
                 );
@@ -589,7 +738,7 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
           </div>
 
           {/* 4. Studio Action Controls Dock */}
-          <div className="grid grid-cols-3 gap-1.5 pb-2">
+          <div className="grid grid-cols-3 gap-2 pb-1">
             <button
               type="button"
               onClick={() => {
@@ -598,26 +747,26 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
                   onPlayTaskNote();
                 }, 1200);
               }}
-              className="py-2.5 px-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95"
+              className="py-2.5 px-2 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-sm"
             >
-              <Music className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <Music className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span>Каданс</span>
             </button>
 
             <button
               type="button"
               onClick={onPlayTaskNote}
-              className="py-2.5 px-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95"
+              className="py-2.5 px-2 bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-700/60 text-indigo-100 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-sm"
             >
-              <Volume2 className={`w-3.5 h-3.5 text-slate-400 shrink-0 ${isPlaying ? 'animate-bounce' : ''}`} />
-              <span>Повтор</span>
+              <Volume2 className={`w-3.5 h-3.5 text-indigo-300 shrink-0 ${isPlaying ? 'animate-bounce' : ''}`} />
+              <span>{isTwoNotes ? 'Повтор 2 звуков' : 'Повтор'}</span>
             </button>
 
             {isRevealed ? (
               <button
                 type="button"
                 onClick={() => onNewTask()}
-                className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer shadow-md active:scale-95"
+                className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md active:scale-95"
               >
                 <span>Дальше</span>
                 <ArrowRight className="w-3.5 h-3.5 shrink-0" />
@@ -626,7 +775,7 @@ export const ScaleDegreeModeCard: React.FC<ScaleDegreeModeCardProps> = ({
               <button
                 type="button"
                 onClick={() => onNewTask()}
-                className="py-2.5 px-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95"
+                className="py-2.5 px-2 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-sm"
               >
                 <RotateCw className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <span>Новая</span>

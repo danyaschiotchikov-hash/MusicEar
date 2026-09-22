@@ -474,6 +474,18 @@ class AudioEngine {
     }
   }
 
+  public playChord(
+    midis: number[],
+    startTime: number,
+    duration: number,
+    gainBoost: number,
+    settings: PlaybackSettings
+  ) {
+    for (const m of midis) {
+      this.playSingleNote(m, startTime, duration, gainBoost, settings);
+    }
+  }
+
   /**
    * Continuous sustained reference tone (non-decaying organ pedal tone for construction mode)
    */

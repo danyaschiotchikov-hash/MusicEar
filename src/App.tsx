@@ -170,45 +170,70 @@ export default function App() {
 
   // Scale Degree Handlers
   const handleNewDegreeTask = useCallback(
-    (forceCadence = false) => {
+    (forceCadence = false, overrideTwoNotes?: boolean) => {
       if (autoAdvanceTimerRef.current) {
         clearTimeout(autoAdvanceTimerRef.current);
         autoAdvanceTimerRef.current = null;
       }
       audioEngine.stopAll();
+      const effectiveTwoNotes = overrideTwoNotes !== undefined ? overrideTwoNotes : degreeIsTwoNotes;
       const task = generateScaleDegreeTask(
         settings.tonalRootNote ?? 'C',
         settings.tonalScaleMode ?? 'major',
         settings.degreeType ?? 'diatonic',
         stats,
         settings.spacedRepetitionEnabled ?? true,
-        degreeIsTwoNotes
+        effectiveTwoNotes
       );
       setDegreeTask(task);
       setIsPlaying(true);
       setStatusMessage({
-        text: `Слушайте: ступень в тональности ${task.keyNameRu}...`,
+        text: effectiveTwoNotes
+          ? `Слушайте: 2 ступени в тональности ${task.keyNameRu}...`
+          : `Слушайте: ступень в тональности ${task.keyNameRu}...`,
         type: 'playing',
       });
+
+      const playNotes = (startTime: number) => {
+        if (task.isTwoNotes && task.secondTargetMidi) {
+          if (settings.style === 'arpeggio') {
+            audioEngine.playSingleNote(task.targetMidi, startTime, 1.2, 1.25, settings);
+            audioEngine.playSingleNote(task.secondTargetMidi, startTime + 0.45, 1.4, 1.25, settings);
+            window.setTimeout(() => setIsPlaying(false), 1900);
+          } else {
+            audioEngine.playChord([task.targetMidi, task.secondTargetMidi], startTime, 1.6, 1.25, settings);
+            window.setTimeout(() => setIsPlaying(false), 1600);
+          }
+        } else {
+          audioEngine.playSingleNote(task.targetMidi, startTime, 1.5, 1.25, settings);
+          window.setTimeout(() => setIsPlaying(false), 1500);
+        }
+      };
 
       const now = audioEngine.getContext().currentTime + 0.05;
 
       // Check if tuning cadence should be played before task note (e.g. when forced on key change or cadence enabled)
       const playCadence = forceCadence || settings.cadenceBeforeTask === true;
       if (playCadence) {
-        // Play tonic cadence / chord first, then task note
+        // Play tonic cadence / chord first, then task note(s)
         handlePlayKeyCadence(task.tonicNoteName, task.keyScaleMode);
         window.setTimeout(() => {
           const noteNow = audioEngine.getContext().currentTime + 0.05;
-          audioEngine.playSingleNote(task.targetMidi, noteNow, 1.4, 1.25, settings);
-          window.setTimeout(() => setIsPlaying(false), 1400);
+          playNotes(noteNow);
         }, 1200);
       } else {
-        audioEngine.playSingleNote(task.targetMidi, now, 1.5, 1.25, settings);
-        window.setTimeout(() => setIsPlaying(false), 1500);
+        playNotes(now);
       }
     },
-    [settings, stats]
+    [settings, stats, degreeIsTwoNotes]
+  );
+
+  const handleToggleDegreeTwoNotes = useCallback(
+    (val: boolean) => {
+      setDegreeIsTwoNotes(val);
+      handleNewDegreeTask(false, val);
+    },
+    [handleNewDegreeTask]
   );
 
   const handlePlayDegreeTaskNote = useCallback(() => {
@@ -217,11 +242,18 @@ export default function App() {
     setIsPlaying(true);
     const now = audioEngine.getContext().currentTime + 0.05;
     if (degreeTask.isTwoNotes && degreeTask.secondTargetMidi) {
-      audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 1.5, 1.25, settings);
+      if (settings.style === 'arpeggio') {
+        audioEngine.playSingleNote(degreeTask.targetMidi, now, 1.2, 1.25, settings);
+        audioEngine.playSingleNote(degreeTask.secondTargetMidi, now + 0.45, 1.4, 1.25, settings);
+        window.setTimeout(() => setIsPlaying(false), 1900);
+      } else {
+        audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 1.6, 1.25, settings);
+        window.setTimeout(() => setIsPlaying(false), 1600);
+      }
     } else {
       audioEngine.playSingleNote(degreeTask.targetMidi, now, 1.5, 1.25, settings);
+      window.setTimeout(() => setIsPlaying(false), 1500);
     }
-    window.setTimeout(() => setIsPlaying(false), 1500);
   }, [degreeTask, settings]);
 
   const handlePlayDegreeResolution = useCallback(() => {
@@ -255,26 +287,65 @@ export default function App() {
   }, [degreeTask, settings]);
 
   const handleSelectDegreeAnswer = useCallback(
-    (selectedDegreeId: string) => {
+    (selectedDegreeId: string, selectedSemitone?: number, keyMidi?: number) => {
       if (!degreeTask || degreeTask.revealed) return;
 
-      const isTwoNotes = degreeTask.isTwoNotes && degreeTask.secondDegreeId;
+      const isTwoNotes = degreeTask.isTwoNotes && Boolean(degreeTask.secondDegreeId);
       const targetIds = isTwoNotes ? [degreeTask.id, degreeTask.secondDegreeId!] : [degreeTask.id];
       const currentGuessed = degreeTask.userAnswerIds || [];
 
-      // Check if selected degree is one of the target degrees
-      if (targetIds.includes(selectedDegreeId)) {
-        if (currentGuessed.includes(selectedDegreeId)) return; // already guessed this one
+      // Calculate target semitones from tonic
+      const targetSemitones = [
+        ((degreeTask.targetMidi % 12) - (degreeTask.tonicMidi % 12) + 12) % 12,
+        ...(isTwoNotes && degreeTask.secondTargetMidi !== undefined
+          ? [((degreeTask.secondTargetMidi % 12) - (degreeTask.tonicMidi % 12) + 12) % 12]
+          : []),
+      ];
 
-        const updatedGuessed = [...currentGuessed, selectedDegreeId];
+      // Match check: by ID or relative semitone offset
+      const isMatchById = targetIds.includes(selectedDegreeId);
+      const isMatchBySemitone = selectedSemitone !== undefined && targetSemitones.includes(selectedSemitone);
+      const isCorrectMatch = isMatchById || isMatchBySemitone;
+
+      let matchedTargetId = selectedDegreeId;
+      if (!isMatchById && isMatchBySemitone) {
+        const firstSemitone = ((degreeTask.targetMidi % 12) - (degreeTask.tonicMidi % 12) + 12) % 12;
+        if (selectedSemitone === firstSemitone) {
+          matchedTargetId = degreeTask.id;
+        } else if (degreeTask.secondDegreeId) {
+          matchedTargetId = degreeTask.secondDegreeId;
+        }
+      }
+
+      if (isCorrectMatch) {
+        if (currentGuessed.includes(matchedTargetId)) return; // already guessed this note
+
+        const updatedGuessed = [...currentGuessed, matchedTargetId];
         const allGuessed = targetIds.every((id) => updatedGuessed.includes(id));
 
         if (allGuessed) {
           const alreadyHadIncorrects = (degreeTask.incorrectAnswers && degreeTask.incorrectAnswers.length > 0);
 
           setDegreeTask((prev) =>
-            prev ? { ...prev, revealed: true, userAnswerIds: updatedGuessed, userAnswerId: selectedDegreeId, isCorrect: !alreadyHadIncorrects } : null
+            prev ? { ...prev, revealed: true, userAnswerIds: updatedGuessed, userAnswerId: matchedTargetId, isCorrect: !alreadyHadIncorrects } : null
           );
+
+          // Update marathon streak
+          if (!alreadyHadIncorrects) {
+            setDegreeMarathonStreak((prevStreak) => {
+              const nextStreak = prevStreak + 1;
+              setDegreeMarathonBestStreak((prevBest) => {
+                const newBest = Math.max(prevBest, nextStreak);
+                try {
+                  localStorage.setItem('solfege_degree_marathon_best', String(newBest));
+                } catch {
+                  // ignore
+                }
+                return newBest;
+              });
+              return nextStreak;
+            });
+          }
 
           setStats((prev) => {
             const itemStat = prev.items[degreeTask.id] || { tested: 0, correct: 0 };
@@ -306,10 +377,10 @@ export default function App() {
             audioEngine.stopAll();
             setIsPlaying(true);
             const now = audioEngine.getContext().currentTime + 0.05;
-            if (degreeTask.secondTargetMidi && degreeTask.secondTargetMidi) {
-              audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 0.75, 1.25, settings);
+            if (degreeTask.secondTargetMidi) {
+              audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 0.85, 1.25, settings);
             } else {
-              audioEngine.playSingleNote(degreeTask.targetMidi, now, 0.75, 1.25, settings);
+              audioEngine.playSingleNote(degreeTask.targetMidi, now, 0.85, 1.25, settings);
             }
 
             window.setTimeout(() => {
@@ -318,7 +389,7 @@ export default function App() {
               autoAdvanceTimerRef.current = window.setTimeout(() => {
                 handleNewDegreeTask();
               }, Math.max(800, resSec * 1000 + 400));
-            }, 750);
+            }, 850);
           } else {
             handlePlayDegreeTaskNote();
             if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
@@ -329,25 +400,21 @@ export default function App() {
         } else {
           // First note of 2-note mode guessed correctly
           setDegreeTask((prev) => (prev ? { ...prev, userAnswerIds: updatedGuessed } : null));
-          setStatusMessage({ text: 'Первый звук угадан! Найдите второй звук.', type: 'correct' });
+          setStatusMessage({ text: '✓ Первый звук угадан! Найдите второй звук на клавиатуре.', type: 'correct' });
 
-          const semitoneFromId: Record<string, number> = {
-            'deg_I': 0, 'deg_bII': 1, 'deg_II': 2, 'deg_bIII': 3, 'deg_III': 4,
-            'deg_IV': 5, 'deg_bV': 6, 'deg_V': 7, 'deg_bVI': 8, 'deg_VI': 9,
-            'deg_bVII': 10, 'deg_VII': 11,
-          };
-          const offset = semitoneFromId[selectedDegreeId];
-          if (offset !== undefined) {
-            const guessedMidi = degreeTask.tonicMidi + offset;
+          const playedMidi = keyMidi ?? (selectedSemitone !== undefined ? degreeTask.tonicMidi + selectedSemitone : undefined);
+          if (playedMidi !== undefined) {
             audioEngine.stopAll();
             setIsPlaying(true);
             const now = audioEngine.getContext().currentTime + 0.05;
-            audioEngine.playSingleNote(guessedMidi, now, 0.7, 1.1, settings);
-            window.setTimeout(() => setIsPlaying(false), 700);
+            audioEngine.playSingleNote(playedMidi, now, 0.75, 1.2, settings);
+            window.setTimeout(() => setIsPlaying(false), 750);
           }
         }
       } else {
-        // Wrong answer
+        // Wrong answer: reset marathon streak
+        setDegreeMarathonStreak(0);
+
         setDegreeTask((prev) => {
           if (!prev) return null;
           const currentIncorrects = prev.incorrectAnswers || [];
@@ -358,24 +425,17 @@ export default function App() {
           };
         });
 
-        const semitoneFromId: Record<string, number> = {
-          'deg_I': 0, 'deg_bII': 1, 'deg_II': 2, 'deg_bIII': 3, 'deg_III': 4,
-          'deg_IV': 5, 'deg_bV': 6, 'deg_V': 7, 'deg_bVI': 8, 'deg_VI': 9,
-          'deg_bVII': 10, 'deg_VII': 11,
-        };
-
-        const offset = semitoneFromId[selectedDegreeId];
-        if (offset !== undefined) {
-          const guessedMidi = degreeTask.tonicMidi + offset;
+        const playedMidi = keyMidi ?? (selectedSemitone !== undefined ? degreeTask.tonicMidi + selectedSemitone : undefined);
+        if (playedMidi !== undefined) {
           audioEngine.stopAll();
           setIsPlaying(true);
           const now = audioEngine.getContext().currentTime + 0.05;
-          audioEngine.playSingleNote(guessedMidi, now, 0.7, 1.1, settings);
-          window.setTimeout(() => setIsPlaying(false), 700);
+          audioEngine.playSingleNote(playedMidi, now, 0.65, 1.1, settings);
+          window.setTimeout(() => setIsPlaying(false), 650);
         }
 
         setStatusMessage({
-          text: 'Неверно! Попробуйте другую ступень.',
+          text: 'Неверно! Послушайте этот звук и попробуйте другую клавишу.',
           type: 'wrong',
         });
       }
@@ -1880,7 +1940,7 @@ export default function App() {
               >
                 {statusMessage.type === 'correct' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
                 {statusMessage.type === 'wrong' && <XCircle className="w-4 h-4 text-rose-400 shrink-0" />}
-                {statusMessage.type === 'playing' && <Volume2 className="w-4 h-4 text-indigo-400 shrink-0 animate-bounce" />}
+                {(statusMessage.type as string) === 'playing' && <Volume2 className="w-4 h-4 text-indigo-400 shrink-0 animate-bounce" />}
                 <span className="truncate">{statusMessage.text}</span>
               </div>
             </motion.div>
@@ -1938,7 +1998,7 @@ export default function App() {
                   isNewRecord={degreeMarathonStreak > 0 && degreeMarathonStreak === degreeMarathonBestStreak}
                   onResetMarathon={() => setDegreeMarathonStreak(0)}
                   isTwoNotes={degreeIsTwoNotes}
-                  onToggleTwoNotes={setDegreeIsTwoNotes}
+                  onToggleTwoNotes={handleToggleDegreeTwoNotes}
                 />
               )}
 
