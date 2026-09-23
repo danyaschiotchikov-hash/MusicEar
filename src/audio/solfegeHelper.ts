@@ -32,6 +32,11 @@ export const RUSSIAN_NOTE_NAMES_BY_SEMITONE: Record<number, string> = {
   11: 'Си',
 };
 
+// Anti-repetition sliding buffers to prevent repeating same scale degrees and chords
+const recentDegreeIds: string[] = [];
+const recentTwoNotesPairs: string[] = [];
+const recentVoicingIds: string[] = [];
+
 export interface SolfegeStep {
   fromNote: string;
   toNote: string;
@@ -344,8 +349,16 @@ export function generateScaleDegreeTask(
     degreesList,
     (d) => d.id,
     stats,
-    spacedRepetitionEnabled
+    spacedRepetitionEnabled,
+    recentDegreeIds
   );
+
+  // Update recent single degrees history
+  recentDegreeIds.push(chosen.id);
+  if (recentDegreeIds.length > 5) {
+    recentDegreeIds.shift();
+  }
+
   const targetMidi = tonicMidi + chosen.semitones;
   const targetNoteName = CHROMATIC_NOTES_UP[((targetMidi % 12) + 12) % 12];
 
@@ -355,10 +368,24 @@ export function generateScaleDegreeTask(
 
   if (isTwoNotes) {
     const available = degreesList.filter((d) => d.id !== chosen.id);
-    const chosen2 = available[Math.floor(Math.random() * available.length)] || degreesList[0];
+    // Filter out pair combinations seen recently
+    const nonRecentAvailable = available.filter((d) => {
+      const pairKey = [chosen.id, d.id].sort().join('+');
+      return !recentTwoNotesPairs.includes(pairKey);
+    });
+
+    const candidatePool = nonRecentAvailable.length > 0 ? nonRecentAvailable : available;
+    const chosen2 = candidatePool[Math.floor(Math.random() * candidatePool.length)] || degreesList[0];
     secondTargetMidi = tonicMidi + chosen2.semitones;
     secondDegreeId = chosen2.id;
     secondDegreeNameRu = chosen2.nameRu;
+
+    // Record pair in history
+    const pairKey = [chosen.id, chosen2.id].sort().join('+');
+    recentTwoNotesPairs.push(pairKey);
+    if (recentTwoNotesPairs.length > 8) {
+      recentTwoNotesPairs.shift();
+    }
   }
 
   const resolutionPathMidis = chosen.pathSemitones.map((s) => tonicMidi + s);
@@ -1985,8 +2012,15 @@ export function generateSmartVoicingTask(
       availableVoicingIds,
       (id) => id,
       stats,
-      spacedRepetitionEnabled
+      spacedRepetitionEnabled,
+      recentVoicingIds
     );
+
+    recentVoicingIds.push(chosenVoicingId);
+    if (recentVoicingIds.length > 5) {
+      recentVoicingIds.shift();
+    }
+
     const topPicks = chordCandidatesMap.get(chosenVoicingId)!;
     // Pick the best octave (or randomly among the top 2 octaves)
     chosen = topPicks[Math.floor(Math.random() * Math.min(2, topPicks.length))];

@@ -414,7 +414,7 @@ export const ALL_ITEMS: MusicItem[] = [
     shortName: 'D2',
     category: 'd7_inversions',
     semitones: [0, 2, 6, 9],
-    resolutionSemitones: [-1, 2, 7, 11], // IV->III (-1), V->I (+5 -> +7), VII->I (+1 -> +7), II->I (-2 -> +7) or bass IV->III (-1) into T6 [ -1, 2, 7, 11 ] (Т6 с удвоенной тоникой)
+    resolutionSemitones: [-1, 2, 7, 7], // IV->III (-1), V->V (+2), VII->I (+7), II->I (+7, down 2 semitones to 1st degree) -> T6 [ -1, 2, 7, 7 ] (Т6 с удвоенной тоникой)
     resolutionName: 'Т6 (с удв. тоникой)',
     hint: 'IV → Т6',
   },

@@ -336,28 +336,28 @@ export const VexFlowHarmonizationStaff: React.FC<VexFlowHarmonizationStaffProps>
           const el = node as SVGElement;
           const currentStroke = el.getAttribute('stroke');
           const currentFill = el.getAttribute('fill');
+          const isFilled = currentFill && currentFill !== 'none';
 
-          if (currentStroke === '#f8fafc' || currentStroke === '#ffffff') {
-            el.setAttribute('stroke', '#e2e8f0');
-            el.setAttribute('stroke-width', '1');
-            el.setAttribute('stroke-linecap', 'round');
-          } else if (currentStroke === '#000000' || currentStroke === 'black' || !currentStroke) {
-            el.setAttribute('stroke', '#cbd5e1'); // light slate
-            el.setAttribute('stroke-width', '1');
-          } else if (currentStroke === '#64748b') {
-            el.setAttribute('stroke', '#94a3b8');
-            el.setAttribute('stroke-width', '1');
-          }
-
-          if (currentFill === '#000000' || currentFill === 'black') {
+          if (isFilled) {
+            // Pure fill for noteheads and symbols with NO artificial outline stroke
             el.setAttribute('fill', '#f1f5f9');
+            el.removeAttribute('stroke');
+            el.removeAttribute('stroke-width');
+          } else {
+            // Stave lines, stems, barlines: crisp, thin classical lines
+            if (currentStroke === '#f8fafc' || currentStroke === '#ffffff') {
+              el.setAttribute('stroke', '#cbd5e1');
+            } else {
+              el.setAttribute('stroke', '#94a3b8');
+            }
+            el.setAttribute('stroke-width', '0.85');
           }
         });
 
         // Ensure text elements (clefs, time signatures, barlines) are elegant and not overly bold
         svgEl.querySelectorAll('text').forEach((textNode) => {
           textNode.setAttribute('fill', '#f8fafc');
-          textNode.style.fontWeight = '500';
+          textNode.style.fontWeight = '400';
         });
 
         // 6. Draw Chord Signatures aligned on a single straight horizontal baseline
@@ -382,7 +382,7 @@ export const VexFlowHarmonizationStaff: React.FC<VexFlowHarmonizationStaffProps>
             textEl.setAttribute('fill', color);
             textEl.setAttribute('font-family', 'Georgia, "Times New Roman", serif');
             textEl.setAttribute('font-size', '13px');
-            textEl.setAttribute('font-weight', '700');
+            textEl.style.fontWeight = '500';
             textEl.textContent = displaySymbol;
             svgEl.appendChild(textEl);
           }

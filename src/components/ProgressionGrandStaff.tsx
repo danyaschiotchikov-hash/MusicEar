@@ -7,9 +7,9 @@ import {
   Formatter,
   StaveConnector,
   Accidental,
-  Annotation,
   Stem,
   StaveTie,
+  BarlineType,
 } from 'vexflow';
 import { RealizedProgression, identifyChordSeventh } from '../audio/harmonicProgressions';
 
@@ -65,6 +65,48 @@ function midiToVexKey(midi: number, isFlat: boolean): string {
   return `${noteName}/${octave}`;
 }
 
+function formatChordNotation(sym: string): string {
+  if (!sym) return '';
+  return sym
+    .replace(/5\/3/g, '')
+    .replace(/6\/4/g, '⁶/₄')
+    .replace(/6\/5/g, '⁶/₅')
+    .replace(/4\/3/g, '⁴/₃')
+    .replace(/6/g, '₆')
+    .replace(/7/g, '₇')
+    .replace(/2/g, '₂');
+}
+
+function getRomanDegreeNotation(sym: string): string {
+  if (!sym) return '';
+  const s = sym.trim();
+  if (/^K6\/?4/i.test(s) || /^I6\/?4/i.test(s)) return 'I⁶/₄';
+  if (/^T5\/?3/i.test(s) || s === 'T' || s === 't' || s === 'I5/3' || s === 'I') return 'I';
+  if (/^T6/i.test(s)) return 'I₆';
+  if (/^S6\/?4/i.test(s) || /^IV6\/?4/i.test(s)) return 'IV⁶/₄';
+  if (/^S6/i.test(s) || /^IV6/i.test(s)) return 'IV₆';
+  if (/^S5\/?3/i.test(s) || s === 'S' || s === 's' || s === 'IV') return 'IV';
+  if (/^D7/i.test(s) || /^V7/i.test(s)) return 'V₇';
+  if (/^D6\/?5/i.test(s) || /^V6\/?5/i.test(s)) return 'V⁶/₅';
+  if (/^D4\/?3/i.test(s) || /^V4\/?3/i.test(s)) return 'V⁴/₃';
+  if (/^D2/i.test(s) || /^V2/i.test(s)) return 'V₂';
+  if (/^D6/i.test(s) || /^V6/i.test(s)) return 'V₆';
+  if (/^D5\/?3/i.test(s) || s === 'D' || s === 'd' || s === 'V') return 'V';
+  if (/^II6\/?5/i.test(s)) return 'II⁶/₅';
+  if (/^II4\/?3/i.test(s)) return 'II⁴/₃';
+  if (/^II2/i.test(s)) return 'II₂';
+  if (/^II6/i.test(s)) return 'II₆';
+  if (/^II7/i.test(s)) return 'II₇';
+  if (/^II/i.test(s)) return 'II';
+  if (/^VII7/i.test(s)) return 'VII₇';
+  if (/^VII6\/?5/i.test(s)) return 'VII⁶/₅';
+  if (/^VII/i.test(s)) return 'VII';
+  if (/^VI/i.test(s)) return 'VI';
+  if (/^III/i.test(s)) return 'III';
+  if (/^N6/i.test(s) || /^♭II6/i.test(s)) return '♭II₆';
+  return formatChordNotation(s);
+}
+
 export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React.memo(({
   progression,
   activeStepIndex,
@@ -74,7 +116,6 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'vexflow' | 'voices'>('vexflow');
 
   const steps = progression?.steps || [];
   const vexKey = getVexKeyFromProgression(progression.tonicNoteName, progression.scaleMode);
@@ -83,7 +124,6 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     container.innerHTML = '';
     setRenderError(null);
 
@@ -91,11 +131,11 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
 
     try {
       const stepsCount = steps.length;
-      const stepWidth = Math.max(62, Math.min(88, Math.floor(340 / stepsCount)));
-      const startX = 58;
+      const stepWidth = Math.max(64, Math.min(92, Math.floor(360 / stepsCount)));
+      const startX = 64;
       const endPadding = 24;
-      const calculatedWidth = Math.max(330, startX + stepsCount * stepWidth + endPadding);
-      const totalHeight = 195;
+      const calculatedWidth = Math.max(340, startX + stepsCount * stepWidth + endPadding);
+      const totalHeight = 216;
 
       const renderer = new Renderer(container, Renderer.Backends.SVG);
       renderer.resize(calculatedWidth, totalHeight);
@@ -105,32 +145,40 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
       context.setFillStyle('#cbd5e1');
       context.setStrokeStyle('#64748b');
 
-      const topStaveY = 12;
-      const bottomStaveY = 98;
-      const staveWidth = calculatedWidth - 18;
+      // Stave position: startX 28 gives ample space for the brace accolade without clipping
+      const staveX = 28;
+      const topStaveY = 14;
+      // Distance of 122 eliminates stem collisions between alto and tenor
+      const bottomStaveY = 120;
+      const staveWidth = calculatedWidth - 46;
 
-      const topStave = new Stave(8, topStaveY, staveWidth);
+      const topStave = new Stave(staveX, topStaveY, staveWidth);
       topStave.addClef('treble');
       topStave.addKeySignature(vexKey);
-      topStave.setDefaultLedgerLineStyle({ strokeStyle: '#f8fafc', lineWidth: 1.2 });
+      topStave.setEndBarType(BarlineType.END);
+      topStave.setDefaultLedgerLineStyle({ strokeStyle: '#94a3b8', lineWidth: 0.9 });
       topStave.setContext(context).draw();
 
-      const bottomStave = new Stave(8, bottomStaveY, staveWidth);
+      const bottomStave = new Stave(staveX, bottomStaveY, staveWidth);
       bottomStave.addClef('bass');
       bottomStave.addKeySignature(vexKey);
-      bottomStave.setDefaultLedgerLineStyle({ strokeStyle: '#f8fafc', lineWidth: 1.2 });
+      bottomStave.setEndBarType(BarlineType.END);
+      bottomStave.setDefaultLedgerLineStyle({ strokeStyle: '#94a3b8', lineWidth: 0.9 });
       bottomStave.setContext(context).draw();
 
+      // Curly Brace Accolade
       const brace = new StaveConnector(topStave, bottomStave);
       brace.setType(StaveConnector.type.BRACE);
       brace.setContext(context).draw();
 
+      // Left barline
       const leftLine = new StaveConnector(topStave, bottomStave);
       leftLine.setType(StaveConnector.type.SINGLE_LEFT);
       leftLine.setContext(context).draw();
 
+      // Final Double Barline across staves
       const rightLine = new StaveConnector(topStave, bottomStave);
-      rightLine.setType(StaveConnector.type.DOUBLE);
+      rightLine.setType(StaveConnector.type.BOLD_DOUBLE_RIGHT);
       rightLine.setContext(context).draw();
 
       const sopranoNotes: StaveNote[] = [];
@@ -142,11 +190,6 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
         const [bMidi, tMidi, aMidi, sMidi] = step.midisSATB;
         const isActive = activeStepIndex === idx;
 
-        const nextStep = steps[idx + 1];
-        const seventhInfo = !showOnlySoprano
-          ? identifyChordSeventh(step.symbol, step.midisSATB, nextStep ? nextStep.midisSATB : undefined)
-          : null;
-
         const sKey = midiToVexKey(sMidi, isFlat);
         const sNote = new StaveNote({
           clef: 'treble',
@@ -154,7 +197,7 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
           duration: 'q',
           stemDirection: Stem.UP,
         });
-        sNote.setLedgerLineStyle({ strokeStyle: '#f8fafc', lineWidth: 1.6 });
+        sNote.setLedgerLineStyle({ strokeStyle: '#94a3b8', lineWidth: 0.9 });
 
         if (showOnlySoprano) {
           const bRest = new StaveNote({
@@ -162,12 +205,6 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
             keys: ['d/3'],
             duration: 'qr',
           });
-
-          const chordLabel = userStepSymbols?.[idx] || '?';
-          const chordAnnot = new Annotation(chordLabel);
-          chordAnnot.setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
-          chordAnnot.setFont({ family: 'serif', size: 10, weight: 'bold' });
-          bRest.addModifier(chordAnnot, 0);
 
           if (isActive) {
             sNote.setStyle({ fillStyle: '#38bdf8', strokeStyle: '#38bdf8' });
@@ -187,7 +224,7 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
             duration: 'q',
             stemDirection: Stem.DOWN,
           });
-          aNote.setLedgerLineStyle({ strokeStyle: '#f8fafc', lineWidth: 1.6 });
+          aNote.setLedgerLineStyle({ strokeStyle: '#94a3b8', lineWidth: 0.9 });
 
           const tNote = new StaveNote({
             clef: 'bass',
@@ -195,7 +232,7 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
             duration: 'q',
             stemDirection: Stem.UP,
           });
-          tNote.setLedgerLineStyle({ strokeStyle: '#f8fafc', lineWidth: 1.6 });
+          tNote.setLedgerLineStyle({ strokeStyle: '#94a3b8', lineWidth: 0.9 });
 
           const bNote = new StaveNote({
             clef: 'bass',
@@ -203,31 +240,7 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
             duration: 'q',
             stemDirection: Stem.DOWN,
           });
-          bNote.setLedgerLineStyle({ strokeStyle: '#f8fafc', lineWidth: 1.6 });
-
-          const chordAnnot = new Annotation(step.symbol);
-          chordAnnot.setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
-          chordAnnot.setFont({ family: 'serif', size: 10, weight: 'bold' });
-          bNote.addModifier(chordAnnot, 0);
-
-          if (seventhInfo) {
-            const badgeText = seventhInfo.resolution
-              ? `7${seventhInfo.resolution.arrowSymbol}`
-              : '7';
-            const seventhAnnot = new Annotation(badgeText);
-            seventhAnnot.setVerticalJustification(Annotation.VerticalJustify.TOP);
-            seventhAnnot.setFont({ family: 'monospace', size: 8.5, weight: 'bold' });
-
-            if (seventhInfo.voiceIndex === 3) {
-              sNote.addModifier(seventhAnnot, 0);
-            } else if (seventhInfo.voiceIndex === 2) {
-              aNote.addModifier(seventhAnnot, 0);
-            } else if (seventhInfo.voiceIndex === 1) {
-              tNote.addModifier(seventhAnnot, 0);
-            } else {
-              bNote.addModifier(seventhAnnot, 0);
-            }
-          }
+          bNote.setLedgerLineStyle({ strokeStyle: '#94a3b8', lineWidth: 0.9 });
 
           if (isActive) {
             const activeStyle = { fillStyle: '#38bdf8', strokeStyle: '#38bdf8' };
@@ -370,27 +383,69 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
           const el = node as SVGElement;
           const currentStroke = el.getAttribute('stroke');
           const currentFill = el.getAttribute('fill');
+          const isFilled = currentFill && currentFill !== 'none';
 
-          if (currentStroke === '#f8fafc' || currentStroke === '#ffffff') {
-            el.setAttribute('stroke', '#ffffff');
-            el.setAttribute('stroke-width', '1.2');
-            el.setAttribute('stroke-linecap', 'round');
-          } else if (currentStroke === '#000000' || currentStroke === 'black' || !currentStroke) {
-            el.setAttribute('stroke', '#cbd5e1');
-            el.setAttribute('stroke-width', '1.1');
-          } else if (currentStroke === '#64748b') {
-            el.setAttribute('stroke', '#94a3b8');
-            el.setAttribute('stroke-width', '1.1');
-          }
-
-          if (currentFill === '#000000' || currentFill === 'black') {
+          if (isFilled) {
+            // Noteheads, accidentals, clefs, flags, rests: Keep pure fill with NO artificial outline stroke!
             el.setAttribute('fill', '#f1f5f9');
+            el.removeAttribute('stroke');
+            el.removeAttribute('stroke-width');
+          } else {
+            // Stave lines, barlines, stems: Crisp, thin classical lines
+            if (currentStroke === '#f8fafc' || currentStroke === '#ffffff') {
+              el.setAttribute('stroke', '#cbd5e1');
+            } else {
+              el.setAttribute('stroke', '#94a3b8');
+            }
+            el.setAttribute('stroke-width', '0.85');
           }
         });
 
+        // Render chord labels under the bottom stave strictly as scale degrees (ступени) + functions
+        const degreeBaselineY = bottomStaveY + 52;
+        const funcBaselineY = bottomStaveY + 66;
+
+        steps.forEach((step, idx) => {
+          const refNote = sopranoNotes[idx] || bassNotes[idx];
+          if (!refNote) return;
+          const noteX = refNote.getAbsoluteX();
+          const rawChordLabel = userStepSymbols?.[idx] || step.symbol;
+          const degreeText = getRomanDegreeNotation(rawChordLabel);
+          const funcText = formatChordNotation(rawChordLabel);
+
+          // 1. Primary scale degree label (e.g. I, IV₆, I⁶/₄, V₇)
+          const degEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          degEl.setAttribute('x', String(noteX));
+          degEl.setAttribute('y', String(degreeBaselineY));
+          degEl.setAttribute('text-anchor', 'middle');
+          degEl.setAttribute('fill', '#c7d2fe');
+          degEl.setAttribute('font-size', '13px');
+          degEl.setAttribute('font-family', 'Georgia, "Times New Roman", serif');
+          degEl.style.fontWeight = '500';
+          degEl.textContent = degreeText;
+          svgEl.appendChild(degEl);
+
+          // 2. Functional label (e.g. T, S₆, K⁶/₄, D₇) if distinguishable
+          if (funcText && funcText !== degreeText) {
+            const funcEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            funcEl.setAttribute('x', String(noteX));
+            funcEl.setAttribute('y', String(funcBaselineY));
+            funcEl.setAttribute('text-anchor', 'middle');
+            funcEl.setAttribute('fill', '#94a3b8');
+            funcEl.setAttribute('font-size', '10px');
+            funcEl.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif');
+            funcEl.style.fontWeight = '400';
+            funcEl.textContent = `(${funcText})`;
+            svgEl.appendChild(funcEl);
+          }
+        });
+
+        // Ensure all music text (clefs, keys) are elegant, natural, and never bold
         svgEl.querySelectorAll('text').forEach((textNode) => {
-          textNode.setAttribute('fill', '#e2e8f0');
-          textNode.style.fontWeight = '500';
+          if (!textNode.hasAttribute('fill')) {
+            textNode.setAttribute('fill', '#e2e8f0');
+          }
+          textNode.style.fontWeight = '400';
         });
       }
     } catch (err: unknown) {
@@ -400,113 +455,16 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
   }, [progression, steps, activeStepIndex, showOnlySoprano, userStepSymbols, vexKey, isFlat]);
 
   return (
-    <div className="w-full bg-slate-950/70 border border-slate-800/80 rounded-xl p-2 sm:p-2.5 shadow-sm select-none flex flex-col items-center">
-      {/* Ultra Compact Info Header */}
-      <div className="w-full flex items-center justify-between gap-2 pb-1.5 mb-1 border-b border-slate-800/60 text-[11px]">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-300 font-semibold flex items-center gap-1">
-            <span>Тональность:</span>
-            <strong className="text-amber-300 font-mono font-bold">{progression.keyNameRu}</strong>
-          </span>
-          {showOnlySoprano && (
-            <span className="px-1.5 py-0.2 bg-rose-950/70 border border-rose-500/40 text-rose-300 text-[9px] rounded font-bold">
-              Сопрано
-            </span>
-          )}
-        </div>
-
-        {/* View Toggle */}
-        <div className="flex items-center bg-slate-900 p-0.5 rounded-md border border-slate-800 text-[10px]">
-          <button
-            type="button"
-            onClick={() => setViewMode('vexflow')}
-            className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
-              viewMode === 'vexflow'
-                ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Ноты
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('voices')}
-            className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
-              viewMode === 'voices'
-                ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            САТБ
-          </button>
-        </div>
-      </div>
-
+    <div className="w-full select-none flex flex-col items-center">
       {renderError && (
         <div className="w-full p-2 mb-1 bg-red-950/40 border border-red-800/50 rounded-lg text-[11px] text-red-300">
           Ошибка отрисовки: {renderError}
         </div>
       )}
 
-      {/* View 1: Compact VexFlow Score */}
-      {viewMode === 'vexflow' ? (
-        <div className="w-full flex justify-center py-0.5 overflow-x-auto">
-          <div ref={containerRef} className="w-full flex justify-center" />
-        </div>
-      ) : (
-        /* View 2: Compact Voices Matrix */
-        <div className="w-full my-1 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-1.5">
-          {steps.map((step, idx) => {
-            const isActive = activeStepIndex === idx;
-            const [bName, tName, aName, sName] = step.noteNamesSATB;
-
-            return (
-              <div
-                key={`voice-box-${idx}`}
-                onClick={() => onPlayStep?.(idx)}
-                className={`p-1.5 rounded-lg border flex flex-col gap-0.5 transition cursor-pointer text-[10px] ${
-                  isActive
-                    ? 'bg-sky-950/80 border-sky-400 ring-1 ring-sky-400/50'
-                    : 'bg-slate-900/70 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex justify-between items-center pb-0.5 border-b border-slate-800/80 font-mono">
-                  <span className="text-slate-500">#{idx + 1}</span>
-                  <span className="font-bold text-white text-xs">{step.symbol}</span>
-                </div>
-                <div className="flex justify-between text-rose-300 font-bold pt-0.5">
-                  <span>S:</span> <span>{sName}</span>
-                </div>
-                {!showOnlySoprano && (
-                  <>
-                    <div className="flex justify-between text-amber-300">
-                      <span>A:</span> <span>{aName}</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-300">
-                      <span>T:</span> <span>{tName}</span>
-                    </div>
-                    <div className="flex justify-between text-purple-300 font-bold">
-                      <span>B:</span> <span>{bName}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Subtle compact voice color indicators */}
-      <div className="w-full flex items-center justify-center gap-3 pt-1 border-t border-slate-800/50 text-[9px] text-slate-400 font-medium">
-        <span className="text-rose-400">● S (Сопрано)</span>
-        {!showOnlySoprano && (
-          <>
-            <span className="text-amber-400">● A (Альт)</span>
-            <span className="text-emerald-400">● T (Тенор)</span>
-            <span className="text-purple-400">● B (Бас)</span>
-            <span className="text-amber-300 font-mono">7↓ септима</span>
-          </>
-        )}
+      {/* Clean VexFlow Score */}
+      <div className="w-full flex justify-center py-0.5 overflow-x-auto">
+        <div ref={containerRef} className="w-full flex justify-center" />
       </div>
     </div>
   );

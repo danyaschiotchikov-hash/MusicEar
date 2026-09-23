@@ -517,3 +517,14 @@ html.light-mode,
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
 }
+
+/* Musical notation crispness: ensure notes, glyphs, and degrees are never bold */
+svg .vf-stavenote,
+svg .vf-accidental,
+svg .vf-clef,
+svg .vf-keysignature,
+svg .vf-timesignature,
+svg text.vf-text {
+  font-weight: 400 !important;
+}
+

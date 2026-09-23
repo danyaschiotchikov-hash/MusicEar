@@ -156,7 +156,7 @@ export const StaffNotation: React.FC<StaffNotationProps> = React.memo(({
           y={yLine4 + 2}
           textAnchor="middle"
           fontSize="11"
-          fontWeight="bold"
+          fontWeight="normal"
           fill="#cbd5e1"
           fontFamily="serif"
         >
@@ -167,7 +167,7 @@ export const StaffNotation: React.FC<StaffNotationProps> = React.memo(({
           y={yLine2 + 2}
           textAnchor="middle"
           fontSize="11"
-          fontWeight="bold"
+          fontWeight="normal"
           fill="#cbd5e1"
           fontFamily="serif"
         >
@@ -262,7 +262,7 @@ export const StaffNotation: React.FC<StaffNotationProps> = React.memo(({
                   y={noteY + 4}
                   textAnchor="middle"
                   fontSize="12"
-                  fontWeight="bold"
+                  fontWeight="normal"
                   fill={isTarget ? '#fbbf24' : '#f1f5f9'}
                   fontFamily="serif"
                 >
@@ -275,7 +275,7 @@ export const StaffNotation: React.FC<StaffNotationProps> = React.memo(({
                   y={noteY + 3}
                   textAnchor="middle"
                   fontSize="12"
-                  fontWeight="bold"
+                  fontWeight="normal"
                   fill={isTarget ? '#fbbf24' : '#f1f5f9'}
                   fontFamily="serif"
                 >

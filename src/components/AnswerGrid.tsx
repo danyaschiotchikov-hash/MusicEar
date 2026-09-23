@@ -216,7 +216,7 @@ function getButtonSubLabel(item: MusicItem): string | null {
   return null;
 }
 
-export const AnswerGrid: React.FC<AnswerGridProps> = ({
+const AnswerGridComponent: React.FC<AnswerGridProps> = ({
   activeItemIds,
   currentTask,
   onSelectAnswer,
@@ -708,3 +708,5 @@ export const AnswerGrid: React.FC<AnswerGridProps> = ({
     </div>
   );
 };
+
+export const AnswerGrid = React.memo(AnswerGridComponent);

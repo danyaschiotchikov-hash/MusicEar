@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PlaybackSettings } from '../types';
 import {
   RealizedProgression,
@@ -15,11 +15,9 @@ import {
   Sparkles,
   CheckCircle2,
   XCircle,
-  Eye,
-  BookOpen,
-  Music,
   Activity,
   Layers,
+  ChevronDown,
 } from 'lucide-react';
 
 interface ProgressionModeCardProps {
@@ -37,6 +35,7 @@ interface ProgressionModeCardProps {
   onPlayCadence?: (tonic: string, mode: 'major' | 'minor') => void;
   onReveal?: () => void;
   onOpenProgressionCatalog?: () => void;
+  onSelectSpecificProgression?: (templateId: string) => void;
 }
 
 interface TaskFeedback {
@@ -247,6 +246,7 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
   onPlayCadence,
   onReveal,
   onOpenProgressionCatalog,
+  onSelectSpecificProgression,
 }) => {
   const [localIsRevealed, setLocalIsRevealed] = useState(false);
   const [userStepSymbols, setUserStepSymbols] = useState<string[]>([]);
@@ -254,6 +254,34 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [previewedStepIndex, setPreviewedStepIndex] = useState<number | null>(null);
   const [taskFeedback, setTaskFeedback] = useState<TaskFeedback | null>(null);
+  const [isTonalityOpen, setIsTonalityOpen] = useState(false);
+  const [isProgressionPickerOpen, setIsProgressionPickerOpen] = useState(false);
+  const tonalityDropdownRef = useRef<HTMLDivElement>(null);
+  const progressionPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isTonalityOpen && !isProgressionPickerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tonalityDropdownRef.current && !tonalityDropdownRef.current.contains(e.target as Node)) {
+        setIsTonalityOpen(false);
+      }
+      if (progressionPickerRef.current && !progressionPickerRef.current.contains(e.target as Node)) {
+        setIsProgressionPickerOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsTonalityOpen(false);
+        setIsProgressionPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isTonalityOpen, isProgressionPickerOpen]);
 
   useEffect(() => {
     if (progression) {
@@ -276,22 +304,33 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
 
   const isRevealed = Boolean(progression.revealed || localIsRevealed);
   const viewMode = settings.progressionViewMode ?? 'cards';
-  const currentKey = settings.progressionRootNote ?? settings.tonalRootNote ?? 'C';
   const currentNotation = settings.progressionNotation ?? 'roman';
 
-  const categories: { id: ProgressionCategory | 'all'; label: string }[] = [
-    { id: 'all', label: 'Все' },
-    { id: 'cadential', label: 'Кадансовые' },
-    { id: 'passing', label: 'Проходящие' },
-    { id: 'auxiliary', label: 'Вспомог.' },
-    { id: 'deceptive', label: 'Прерванные' },
-    { id: 'disjunct', label: 'Со скачками' },
-    { id: 'altered', label: 'Альтерир.' },
-    { id: 'modal', label: 'Модальные' },
-    { id: 'sequence', label: 'Секвенции' },
-    { id: 'ellipsis', label: 'Эллипсис' },
-    { id: 'modern', label: 'Современные' },
-  ];
+  const BASE_CATEGORIES: ProgressionCategory[] = ['cadential', 'passing', 'auxiliary', 'deceptive', 'disjunct'];
+  const COMPLEX_CATEGORIES: ProgressionCategory[] = ['altered', 'modal', 'sequence', 'ellipsis', 'modern'];
+
+  const currentCategoryGroup: 'base' | 'complex' = (() => {
+    const cats = settings.progressionCategories;
+    if (!cats || cats.length === 0) return 'base';
+    const hasComplex = cats.some((c) => COMPLEX_CATEGORIES.includes(c));
+    const hasBase = cats.some((c) => BASE_CATEGORIES.includes(c));
+    if (hasComplex && !hasBase) return 'complex';
+    return 'base';
+  })();
+
+  const availableProgressionsForGroup = useMemo(() => {
+    const allowedCategories = currentCategoryGroup === 'base' ? BASE_CATEGORIES : COMPLEX_CATEGORIES;
+    return CLASSICAL_PROGRESSIONS.filter((p) => allowedCategories.includes(p.category));
+  }, [currentCategoryGroup]);
+
+  const handleCategoryGroupSelect = (group: 'base' | 'complex') => {
+    const updatedCats = group === 'base' ? BASE_CATEGORIES : COMPLEX_CATEGORIES;
+    onSettingsChange?.({
+      progressionCategories: updatedCats,
+      progressionCategory: undefined,
+    });
+    onNewTask();
+  };
 
   const keyOptions = [
     { value: 'C', label: 'C (До)' },
@@ -299,36 +338,13 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
     { value: 'D', label: 'D (Ре)' },
     { value: 'A', label: 'A (Ля)' },
     { value: 'E', label: 'E (Ми)' },
+    { value: 'B', label: 'B (Си)' },
+    { value: 'F#', label: 'F♯ (Фа♯)' },
     { value: 'F', label: 'F (Фа)' },
     { value: 'Bb', label: 'B♭ (Си♭)' },
     { value: 'Es', label: 'E♭ (Ми♭)' },
     { value: 'random', label: '🎲 Случайно' },
   ];
-
-  const activeCategories = settings.progressionCategories ?? [];
-
-  const handleCategoryToggle = (catId: ProgressionCategory | 'all') => {
-    if (catId === 'all') {
-      const allCats: ProgressionCategory[] = ['cadential', 'passing', 'auxiliary', 'deceptive', 'disjunct', 'altered', 'modal', 'sequence', 'ellipsis', 'modern'];
-      const areAllActive = activeCategories.length === 10;
-      onSettingsChange?.({
-        progressionCategories: areAllActive ? [] : allCats,
-        progressionCategory: areAllActive ? undefined : 'all',
-      });
-    } else {
-      let updated: ProgressionCategory[];
-      if (activeCategories.includes(catId)) {
-        updated = activeCategories.filter(c => c !== catId);
-      } else {
-        updated = [...activeCategories, catId];
-      }
-      onSettingsChange?.({
-        progressionCategories: updated,
-        progressionCategory: updated.length === 10 ? 'all' : undefined,
-      });
-    }
-    onNewTask();
-  };
 
   const handleToggleViewMode = (mode: 'cards' | 'test' | 'task') => {
     onSettingsChange?.({ progressionViewMode: mode });
@@ -339,7 +355,7 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
   };
 
   const handleKeyChange = (newKey: string) => {
-    onSettingsChange?.({ progressionRootNote: newKey });
+    onSettingsChange?.({ progressionRootNote: newKey === 'random' ? undefined : newKey });
     onNewTask();
   };
 
@@ -357,6 +373,15 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
     setTaskFeedback(null);
     onNewTask();
   };
+
+  const cleanExplanation = useMemo(() => {
+    let text = progression.template.voiceLeadingExplanationRu || progression.template.nameRu || '';
+    text = text.replace(/^голосоведение:\s*/i, '');
+    text = text.replace(/драматический\s*/gi, 'характерный ');
+    text = text.replace(/остродраматический\s*/gi, 'выразительный ');
+    text = text.replace(/драма[:,\s]*/gi, '');
+    return text.trim();
+  }, [progression.template]);
 
   const getStepChordLabelText = (step: typeof progression.steps[0]): string => {
     if (currentNotation === 'letter') {
@@ -630,32 +655,34 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
     return renderAnalyticalSymbol(step.symbol);
   };
 
+  const btnClass = "w-9 sm:w-10 h-8 flex items-center justify-center rounded-md text-xs sm:text-sm transition cursor-pointer shrink-0";
+
   return (
     <div className="w-full flex flex-col gap-2 select-none">
-      {/* 1. Main Minimalist Card */}
-      <div className="w-full bg-slate-900/60 border border-slate-800 rounded-xl p-2.5 sm:p-3 flex flex-col gap-2.5 shadow-sm">
+      {/* 1. Main Minimalist Apple HIG Surface */}
+      <div className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl p-2.5 sm:p-3.5 flex flex-col gap-3 shadow-sm">
         
-        {/* Row 1: Unified Compact Header Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-1.5 pb-2 border-b border-slate-800/80">
-          {/* Submodes Segmented Control */}
-          <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-xs font-semibold">
+        {/* Row 1: Unified Apple Header Toolbar - Compact, optimized line that fits all screens */}
+        <div className="flex items-center justify-between gap-1 sm:gap-2 w-full py-0.5 flex-wrap sm:flex-nowrap">
+          {/* Segmented Modes */}
+          <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-lg p-0.5 text-xs font-medium shadow-inner shrink-0">
             <button
               type="button"
               onClick={() => handleToggleViewMode('cards')}
-              className={`px-2.5 py-1 rounded-md transition cursor-pointer text-[11px] ${
+              className={`px-1.5 sm:px-2.5 h-7 rounded-md transition cursor-pointer text-[11px] sm:text-xs flex items-center justify-center ${
                 viewMode === 'cards'
-                  ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                  ? 'bg-indigo-600 text-white font-semibold shadow-xs'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Обучение
+              Изучение
             </button>
             <button
               type="button"
               onClick={() => handleToggleViewMode('test')}
-              className={`px-2.5 py-1 rounded-md transition cursor-pointer text-[11px] ${
+              className={`px-1.5 sm:px-2.5 h-7 rounded-md transition cursor-pointer text-[11px] sm:text-xs flex items-center justify-center ${
                 viewMode === 'test'
-                  ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                  ? 'bg-indigo-600 text-white font-semibold shadow-xs'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -664,9 +691,9 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
             <button
               type="button"
               onClick={() => handleToggleViewMode('task')}
-              className={`px-2.5 py-1 rounded-md transition cursor-pointer text-[11px] ${
+              className={`px-1.5 sm:px-2.5 h-7 rounded-md transition cursor-pointer text-[11px] sm:text-xs flex items-center justify-center ${
                 viewMode === 'task'
-                  ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                  ? 'bg-indigo-600 text-white font-semibold shadow-xs'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -674,195 +701,235 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
             </button>
           </div>
 
-          {/* Sound Actions: Play, Cadence, Style */}
-          <div className="flex items-center gap-1.5">
+          {/* Grouping & Parameters (Category selection + Specific Progression Picker) */}
+          <div className="flex items-center gap-0.5 p-0.5 bg-slate-950/70 border border-slate-800 rounded-lg text-xs shrink-0">
             <button
               type="button"
-              onClick={onPlayProgression}
-              disabled={isPlaying}
-              className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition cursor-pointer active:scale-95 shadow-xs"
+              onClick={() => handleCategoryGroupSelect('base')}
+              className={`px-1.5 sm:px-2 h-7 rounded-md transition cursor-pointer text-[11px] sm:text-xs font-medium flex items-center justify-center ${
+                currentCategoryGroup === 'base'
+                  ? 'bg-indigo-600 text-white shadow-xs font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
             >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>{isPlaying ? 'Звучит...' : 'Слушать'}</span>
+              Базовые
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCategoryGroupSelect('complex')}
+              className={`px-1.5 sm:px-2 h-7 rounded-md transition cursor-pointer text-[11px] sm:text-xs font-medium flex items-center justify-center ${
+                currentCategoryGroup === 'complex'
+                  ? 'bg-indigo-600 text-white shadow-xs font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Сложные
             </button>
 
-            {onPlayCadence && (
+            <div className="h-3.5 w-px bg-slate-800 mx-0.5" />
+
+            {/* Progression Parameters Popover (specific progression picker) */}
+            <div className="relative shrink-0" ref={progressionPickerRef}>
               <button
                 type="button"
-                onClick={() => onPlayCadence(currentKey === 'random' ? 'C' : currentKey, progression.scaleMode)}
-                className="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-xs font-medium transition cursor-pointer"
-                title="Сыграть каданс настройки в тональности"
+                onClick={() => {
+                  setIsProgressionPickerOpen((prev) => !prev);
+                  setIsTonalityOpen(false);
+                }}
+                className={`px-1.5 sm:px-2 h-7 rounded-md transition cursor-pointer text-[11px] sm:text-xs font-medium flex items-center gap-0.5 sm:gap-1 ${
+                  isProgressionPickerOpen
+                    ? 'bg-indigo-700 text-white shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                }`}
+                title="Параметры: выбор конкретного оборота"
               >
-                Настройка
+                <span>Обороты</span>
+                <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${isProgressionPickerOpen ? 'rotate-180' : ''}`} />
               </button>
-            )}
 
-            {onSettingsChange && (
-              <div className="flex items-center gap-1 bg-slate-950/70 border border-slate-800 p-0.5 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => onSettingsChange({ style: 'arpeggio' })}
-                  className={`flex items-center justify-center p-2 rounded-md text-xs sm:text-sm transition cursor-pointer ${
-                    settings.style === 'arpeggio'
-                      ? 'bg-indigo-600 text-white font-semibold shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                  title="Мелодически (арпеджио)"
-                >
-                  <Activity className="w-4 h-4 shrink-0" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSettingsChange({ style: 'harmonic' })}
-                  className={`flex items-center justify-center p-2 rounded-md text-xs sm:text-sm transition cursor-pointer ${
-                    settings.style === 'harmonic'
-                      ? 'bg-indigo-600 text-white font-semibold shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                  title="Гармонически (одновременно)"
-                >
-                  <Layers className="w-4 h-4 shrink-0" />
-                </button>
-              </div>
-            )}
+              {isProgressionPickerOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsProgressionPickerOpen(false)}
+                  />
+                  <div className="absolute left-0 sm:right-0 top-full mt-1.5 w-72 sm:w-80 max-h-80 overflow-y-auto bg-slate-900 border border-slate-700/80 rounded-xl p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 text-[11px] text-slate-400 font-medium px-1">
+                      <span>Обороты ({currentCategoryGroup === 'base' ? 'Базовые' : 'Сложные'}):</span>
+                      <span className="text-indigo-300 font-bold">{availableProgressionsForGroup.length}</span>
+                    </div>
+
+                    {/* Random from group option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCategoryGroupSelect(currentCategoryGroup);
+                        setIsProgressionPickerOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-200 border border-indigo-800/40 transition cursor-pointer flex items-center justify-between"
+                    >
+                      <span>🎲 Случайный оборот</span>
+                      <span className="text-[10px] text-indigo-400 font-mono">случайно</span>
+                    </button>
+
+                    {/* Specific templates list */}
+                    <div className="flex flex-col gap-1 pt-0.5">
+                      {availableProgressionsForGroup.map((p) => {
+                        const isCurrent = progression?.template.id === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              if (onSelectSpecificProgression) {
+                                onSelectSpecificProgression(p.id);
+                              } else {
+                                handleCategoryGroupSelect(currentCategoryGroup);
+                              }
+                              setIsProgressionPickerOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition cursor-pointer flex flex-col gap-0.5 border ${
+                              isCurrent
+                                ? 'bg-indigo-600/30 border-indigo-500/70 text-indigo-100'
+                                : 'bg-slate-950/50 hover:bg-slate-800/70 border-slate-800/70 text-slate-300 hover:text-slate-100'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between font-mono font-bold text-xs">
+                              <span className="text-indigo-300">{p.formula}</span>
+                              {isCurrent && <span className="text-[10px] text-emerald-400 font-sans font-semibold">Активен</span>}
+                            </div>
+                            <span className="text-[11px] text-slate-400 font-sans truncate">{p.nameRu}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Key, Scale, and Voicing Options */}
-          <div className="flex items-center gap-1">
-            <select
-              value={currentKey}
-              onChange={(e) => handleKeyChange(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-indigo-300 text-[11px] font-bold font-mono px-1.5 py-1 rounded-lg cursor-pointer focus:outline-none"
-            >
-              {keyOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+          {/* Right Group: Tonality Popover & Action button (if test/task mode) */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="relative shrink-0" ref={tonalityDropdownRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTonalityOpen((prev) => !prev);
+                  setIsProgressionPickerOpen(false);
+                }}
+                className="h-7 sm:h-8 px-2.5 bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-indigo-300 rounded-lg text-xs font-mono font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                title="Выбор тональности и лада"
+              >
+                <span>{progression.tonicNoteName}</span>
+                <span className="text-[11px] text-amber-300 font-sans">{isMinorKey ? '☽' : '☼'}</span>
+                <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${isTonalityOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-[10px] font-semibold">
-              <button
-                type="button"
-                onClick={() => {
-                  onSettingsChange?.({ tonalScaleMode: 'major' });
-                  onNewTask();
-                }}
-                className={`px-1.5 py-0.5 rounded transition cursor-pointer ${
-                  settings.tonalScaleMode !== 'minor'
-                    ? 'bg-indigo-600 text-white font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Маж
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onSettingsChange?.({ tonalScaleMode: 'minor' });
-                  onNewTask();
-                }}
-                className={`px-1.5 py-0.5 rounded transition cursor-pointer ${
-                  settings.tonalScaleMode === 'minor'
-                    ? 'bg-indigo-600 text-white font-bold'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Мин
-              </button>
+              {isTonalityOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsTonalityOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1.5 w-60 bg-slate-900 border border-slate-700/80 rounded-xl p-2.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-2">
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-[11px] text-slate-400 font-medium">
+                      <span>Тональность:</span>
+                      <span className="text-amber-300 font-mono font-bold">{progression.keyNameRu}</span>
+                    </div>
+
+                    {/* Tonic root notes */}
+                    <div className="grid grid-cols-4 gap-1">
+                      {keyOptions.map((opt) => {
+                        const isSelected = (settings.progressionRootNote ?? settings.tonalRootNote ?? 'C') === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              handleKeyChange(opt.value);
+                              setIsTonalityOpen(false);
+                            }}
+                            className={`py-1 px-1 rounded-md text-[11px] font-mono font-bold text-center transition cursor-pointer ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white shadow-xs'
+                                : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Scale mode: Major / Minor */}
+                    <div className="flex items-center gap-1 pt-1 border-t border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSettingsChange?.({ tonalScaleMode: 'major' });
+                          setIsTonalityOpen(false);
+                        }}
+                        className={`flex-1 py-1 px-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer ${
+                          settings.tonalScaleMode !== 'minor'
+                            ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                            : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                        }`}
+                      >
+                        <span>☼</span>
+                        <span>Мажор</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSettingsChange?.({ tonalScaleMode: 'minor' });
+                          setIsTonalityOpen(false);
+                        }}
+                        className={`flex-1 py-1 px-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer ${
+                          settings.tonalScaleMode === 'minor'
+                            ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                            : 'bg-slate-950/60 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                        }`}
+                      >
+                        <span>☽</span>
+                        <span>Минор</span>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Voicing */}
-            <select
-              value={settings.progressionSpacing ?? 'original'}
-              onChange={(e) => onSettingsChange?.({ progressionSpacing: e.target.value as any })}
-              className="bg-slate-950 border border-slate-800 text-emerald-400 text-[10px] font-bold px-1.5 py-1 rounded-lg cursor-pointer focus:outline-none hidden sm:inline-block"
-              title="Расположение"
-            >
-              <option value="original">Оригинал</option>
-              <option value="close">Тесное</option>
-              <option value="open">Широкое</option>
-            </select>
-
-            {onOpenProgressionCatalog && (
-              <button
-                type="button"
-                onClick={onOpenProgressionCatalog}
-                className="flex items-center gap-1 px-2 py-1 bg-purple-950/60 hover:bg-purple-900/80 border border-purple-500/40 text-purple-200 rounded-lg text-xs font-medium transition cursor-pointer"
-                title="Каталог оборотов"
-              >
-                <BookOpen className="w-3 h-3 text-purple-400" />
-                <span className="hidden sm:inline">Каталог</span>
-              </button>
-            )}
-          </div>
-
-          {/* Action Button: Check / Reveal / Next */}
-          <div className="flex items-center gap-1.5">
-            {!isRevealed ? (
-              <>
-                {(viewMode === 'test' || viewMode === 'task') && (
-                  <button
-                    type="button"
-                    onClick={handleCheckUserProgression}
-                    disabled={userStepSymbols.some((s) => !s)}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition cursor-pointer active:scale-95 shadow-xs"
-                  >
-                    <CheckCircle2 className="w-3 h-3" />
-                    <span>Проверить</span>
-                  </button>
-                )}
-
+            {/* Action button in test / task mode */}
+            {(viewMode === 'test' || viewMode === 'task') && (
+              !isRevealed ? (
                 <button
                   type="button"
-                  onClick={handleTriggerReveal}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs font-semibold rounded-lg transition cursor-pointer active:scale-95"
+                  onClick={handleCheckUserProgression}
+                  disabled={userStepSymbols.some((s) => !s)}
+                  className="h-7 sm:h-8 px-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition cursor-pointer active:scale-95 shadow-xs flex items-center gap-1 shrink-0"
+                  title="Проверить ответ"
                 >
-                  <Eye className="w-3 h-3 text-indigo-400" />
-                  <span>Ответ</span>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Проверить</span>
                 </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={handleNextTask}
-                className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition cursor-pointer active:scale-95 shadow-xs"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Дальше</span>
-              </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleNextTask}
+                  className="h-7 sm:h-8 px-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition cursor-pointer active:scale-95 shadow-xs flex items-center gap-1 shrink-0"
+                  title="Следующий оборот"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Дальше</span>
+                </button>
+              )
             )}
           </div>
         </div>
 
-        {/* Category Filter Chips Bar (Compact Single-Row Horizontal Scroll) */}
-        <div className="flex items-center gap-1 overflow-x-auto py-0.5 scrollbar-none text-[11px]">
-          {categories.map((cat) => {
-            const isActive = cat.id === 'all'
-              ? activeCategories.length === 10
-              : activeCategories.includes(cat.id);
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => handleCategoryToggle(cat.id)}
-                className={`px-2 py-0.5 rounded-md transition cursor-pointer whitespace-nowrap flex items-center gap-1 text-[10px] ${
-                  isActive
-                    ? 'bg-indigo-600/90 text-white font-bold'
-                    : 'text-slate-400 hover:text-slate-200 bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800/70'
-                }`}
-              >
-                {isActive && cat.id !== 'all' && (
-                  <span className="w-1 h-1 rounded-full bg-emerald-400" />
-                )}
-                {cat.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Step Timeline & Interactive Cards */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5 w-full">
+        {/* Step Timeline (Apple Clean Cards) */}
+        <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 w-full">
           {progression.steps.map((step, idx) => {
             const isCurrentPlaying = activeStepIndex === idx && isPlaying;
             const isSelectedPreview = previewedStepIndex === idx;
@@ -880,18 +947,18 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
                   }
                   onPlayStep(idx);
                 }}
-                className={`py-1.5 px-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-center relative ${
+                className={`py-2 px-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-center relative active:scale-95 ${
                   isCurrentPlaying
                     ? 'bg-indigo-600 border-indigo-400 text-white font-bold ring-2 ring-indigo-400 shadow-md'
                     : isSlotActive
                     ? 'bg-indigo-950/90 border-indigo-500 text-white ring-1 ring-indigo-500'
                     : isSelectedPreview
                     ? 'bg-indigo-950/70 border-indigo-700/60 text-indigo-200'
-                    : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:bg-slate-850'
+                    : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:bg-slate-900'
                 }`}
               >
-                <span className="text-[9px] text-slate-500 font-mono">Шаг {idx + 1}</span>
-                <span className="text-sm font-mono font-black mt-0.5">
+                <span className="text-[10px] text-slate-500 font-mono font-semibold">{idx + 1}</span>
+                <span className="text-sm font-mono font-extrabold my-0.5">
                   {isRevealed
                     ? renderStepChordLabel(step)
                     : userSym
@@ -899,8 +966,8 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
                     : '?'}
                 </span>
                 {isRevealed && (
-                  <span className="text-[9px] text-slate-400 font-mono mt-0.5">
-                    {step.noteNamesSATB[3]} / {step.noteNamesSATB[0]}
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    {step.noteNamesSATB[3]}/{step.noteNamesSATB[0]}
                   </span>
                 )}
               </button>
@@ -908,23 +975,24 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
           })}
         </div>
 
-        {/* Solo Melodic Voice Listening (S, A, T, B) */}
+        {/* Solo Melodic Voice Listening: Grouped closely together */}
         {onPlayVoice && (
-          <div className="flex items-center justify-between gap-1.5 px-2 py-1 bg-slate-950/60 rounded-lg border border-slate-800/80 text-[11px]">
-            <span className="text-slate-400 font-medium">Партии голосов:</span>
-            <div className="flex items-center gap-1">
+          <div className="flex items-center justify-center gap-2 py-0.5">
+            <span className="text-slate-400 text-[11px] font-medium">Голоса:</span>
+            <div className="flex items-center gap-0.5 p-0.5 bg-slate-950/80 border border-slate-800 rounded-lg">
               {[
-                { label: 'S Сопрано', idx: 3 as const, color: 'text-rose-400 hover:bg-rose-950/40 border-rose-900/40' },
-                { label: 'A Альт', idx: 2 as const, color: 'text-amber-400 hover:bg-amber-950/40 border-amber-900/40' },
-                { label: 'T Тенор', idx: 1 as const, color: 'text-emerald-400 hover:bg-emerald-950/40 border-emerald-900/40' },
-                { label: 'B Бас', idx: 0 as const, color: 'text-purple-400 hover:bg-purple-950/40 border-purple-900/40' },
+                { label: 'S', title: 'Сопрано', idx: 3 as const, color: 'text-rose-400 hover:bg-rose-950/60' },
+                { label: 'A', title: 'Альт', idx: 2 as const, color: 'text-amber-400 hover:bg-amber-950/60' },
+                { label: 'T', title: 'Тенор', idx: 1 as const, color: 'text-emerald-400 hover:bg-emerald-950/60' },
+                { label: 'B', title: 'Бас', idx: 0 as const, color: 'text-purple-400 hover:bg-purple-950/60' },
               ].map((v) => (
                 <button
                   key={v.idx}
                   type="button"
                   onClick={() => onPlayVoice(v.idx)}
                   disabled={isPlaying}
-                  className={`px-2 py-0.5 rounded border ${v.color} font-mono font-bold text-[10px] transition cursor-pointer disabled:opacity-40`}
+                  title={v.title}
+                  className={`w-7 h-7 rounded-md ${v.color} font-mono font-bold text-xs flex items-center justify-center transition cursor-pointer active:scale-95 disabled:opacity-40`}
                 >
                   {v.label}
                 </button>
@@ -935,9 +1003,9 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
 
         {/* Interactive Builder Palette (in Test or Task Mode before Reveal) */}
         {(viewMode === 'test' || viewMode === 'task') && !isRevealed && (
-          <div className="flex flex-col gap-1.5 p-2 bg-slate-950/80 border border-slate-800 rounded-xl">
-            <div className="flex items-center justify-between text-[11px] text-slate-400">
-              <span>Выберите созвучие для Шага {activeStepSlot + 1}:</span>
+          <div className="flex flex-col gap-2 p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Аккорд для шага {activeStepSlot + 1}:</span>
               <button
                 type="button"
                 onClick={() => {
@@ -945,24 +1013,24 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
                   setTaskFeedback(null);
                   setFeedbackError(null);
                 }}
-                className="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer"
+                className="text-[11px] text-slate-500 hover:text-slate-300 cursor-pointer"
               >
                 Сбросить
               </button>
             </div>
 
             {/* Chord palette groups */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               {chordPalette.map((grp) => (
-                <div key={grp.group} className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-slate-500 font-bold w-12 shrink-0">{grp.group}:</span>
+                <div key={grp.group} className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-500 font-bold w-10 shrink-0">{grp.group}:</span>
                   <div className="flex flex-wrap gap-1">
                     {grp.chords.map((c) => (
                       <button
                         key={c}
                         type="button"
                         onClick={() => handlePickChordForStep(c)}
-                        className={`px-1.5 py-0.5 rounded border text-[11px] font-mono font-bold transition cursor-pointer ${grp.color}`}
+                        className={`px-2 py-0.5 rounded-lg border text-xs font-mono font-bold transition cursor-pointer active:scale-95 ${grp.color}`}
                       >
                         {renderAnalyticalSymbol(c)}
                       </button>
@@ -973,7 +1041,7 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
             </div>
 
             {feedbackError && (
-              <p className="text-[11px] text-rose-400 font-semibold mt-0.5">{feedbackError}</p>
+              <p className="text-xs text-rose-400 font-semibold mt-0.5">{feedbackError}</p>
             )}
           </div>
         )}
@@ -1005,34 +1073,49 @@ export const ProgressionModeCard: React.FC<ProgressionModeCardProps> = ({
           </div>
         )}
 
-        {/* Revealed Study Section: Compact Grand Staff & Explanation */}
+        {/* Unified Single Answer Card */}
         {isRevealed && (
-          <div className="flex flex-col gap-2 animate-in fade-in duration-150">
-            {/* Title & Formula Header */}
-            <div className="p-2 bg-slate-950/70 border border-slate-800/80 rounded-xl flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-100">{progression.template.nameRu}</span>
-              <div className="flex items-center gap-1 font-mono font-extrabold text-indigo-300 text-xs">
-                {progression.steps.map((s, i) => (
-                  <React.Fragment key={i}>
-                    {i > 0 && <span className="text-slate-600 font-sans mx-0.5">—</span>}
-                    {renderStepChordLabel(s)}
-                  </React.Fragment>
-                ))}
+          <div className="w-full bg-slate-950/80 border border-indigo-500/30 rounded-xl overflow-hidden shadow-sm flex flex-col animate-in fade-in duration-150">
+            {/* 1. Header: Formula + Progression Name side-by-side */}
+            <div className="flex items-center justify-between flex-wrap gap-2 px-3 py-1.5 bg-indigo-950/40 border-b border-indigo-900/40">
+              <div className="flex items-center flex-wrap gap-2">
+                <div className="flex items-center gap-1 font-mono font-black text-indigo-300 text-sm sm:text-base tracking-wide">
+                  {progression.steps.map((s, i) => (
+                    <React.Fragment key={i}>
+                      {i > 0 && <span className="text-slate-600 font-sans mx-0.5 select-none">—</span>}
+                      <span className="px-1.5 py-0.5 rounded bg-indigo-900/40 border border-indigo-700/40 text-indigo-200">
+                        {renderStepChordLabel(s)}
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </div>
+                <span className="text-slate-600 font-sans hidden sm:inline">•</span>
+                <span className="font-bold text-xs sm:text-sm text-slate-100">
+                  {progression.template.nameRu}
+                </span>
               </div>
+
+              {/* Tonality Badge */}
+              <span className="text-[11px] font-mono font-semibold text-amber-300/90 bg-amber-950/40 border border-amber-800/40 px-2 py-0.5 rounded-md">
+                {progression.keyNameRu}
+              </span>
             </div>
 
-            {/* Compact Grand Staff */}
-            <ProgressionGrandStaff
-              progression={progression}
-              activeStepIndex={isPlaying ? activeStepIndex : previewedStepIndex}
-              onPlayStep={onPlayStep}
-            />
+            {/* 2. Body: Grand Staff notation with chord labels strictly under the staff */}
+            <div className="w-full flex justify-center py-0.5">
+              <ProgressionGrandStaff
+                progression={progression}
+                activeStepIndex={isPlaying ? activeStepIndex : previewedStepIndex}
+                onPlayStep={onPlayStep}
+              />
+            </div>
 
-            {/* Voice Leading Explanation if available */}
-            {progression.template.voiceLeadingExplanationRu && (
-              <p className="text-[11px] text-slate-400 leading-tight px-1">
-                💡 <span className="text-slate-300 font-medium">Голосоведение:</span> {progression.template.voiceLeadingExplanationRu}
-              </p>
+            {/* 3. Footer: Concise remarks on voice leading and difficulties */}
+            {cleanExplanation && (
+              <div className="px-3 py-1.5 bg-slate-950/60 border-t border-slate-800/80 text-[11px] text-slate-300 flex items-start gap-1.5 leading-snug">
+                <span className="text-indigo-400 font-semibold shrink-0">Особенности:</span>
+                <span className="text-slate-300">{cleanExplanation}</span>
+              </div>
             )}
           </div>
         )}

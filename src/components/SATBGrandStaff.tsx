@@ -201,10 +201,10 @@ export const SATBGrandStaff: React.FC<SATBGrandStaffProps> = ({
 
         {keyAccidentals.map((acc, i) => (
           <g key={`key-acc-${i}`}>
-            <text x={56 + i * 10} y={acc.trebleY + 4} fontSize="12" fill="#cbd5e1" fontWeight="bold">
+            <text x={56 + i * 10} y={acc.trebleY + 4} fontSize="12" fill="#cbd5e1" fontWeight="normal">
               {acc.type === '#' ? '♯' : '♭'}
             </text>
-            <text x={56 + i * 10} y={acc.bassY + 4} fontSize="12" fill="#cbd5e1" fontWeight="bold">
+            <text x={56 + i * 10} y={acc.bassY + 4} fontSize="12" fill="#cbd5e1" fontWeight="normal">
               {acc.type === '#' ? '♯' : '♭'}
             </text>
           </g>
@@ -348,57 +348,57 @@ export const SATBGrandStaff: React.FC<SATBGrandStaffProps> = ({
                 />
               )}
 
-              <text x={x} y="26" fontSize="10" fill={userChords[idx] ? '#a5b4fc' : '#94a3b8'} fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+              <text x={x} y="26" fontSize="10" fill={userChords[idx] ? '#a5b4fc' : '#94a3b8'} fontWeight="500" textAnchor="middle" fontFamily="monospace">
                 {userChords[idx] || '?'}
               </text>
 
               {/* 1. SOPRANO */}
               {sopranoPos.ledgerLines.map((ly, li) => (
-                <line key={`s-ledg-${li}`} x1={x - 10} y1={ly} x2={x + 10} y2={ly} stroke="#475569" strokeWidth="2.0" strokeLinecap="round" />
+                <line key={`s-ledg-${li}`} x1={x - 10} y1={ly} x2={x + 10} y2={ly} stroke="#475569" strokeWidth="1.2" strokeLinecap="round" />
               ))}
               {sopranoPos.accidental && (
-                <text x={x - 12} y={sopranoPos.yTreble + 3.5} fontSize="11" fill="#fb7185" fontWeight="extrabold">
+                <text x={x - 12} y={sopranoPos.yTreble + 3.5} fontSize="11" fill="#fb7185" fontWeight="normal">
                   {sopranoPos.accidental}
                 </text>
               )}
               <ellipse cx={x} cy={sopranoPos.yTreble} rx="4" ry="3" fill="#f43f5e" stroke="#fda4af" strokeWidth="0.8" transform={`rotate(-20 ${x} ${sopranoPos.yTreble})`} />
-              <line x1={x + 3.2} y1={sopranoPos.yTreble} x2={x + 3.2} y2={sopranoPos.yTreble - stemLength} stroke="#fb7185" strokeWidth="1.6" strokeLinecap="round" />
+              <line x1={x + 3.2} y1={sopranoPos.yTreble} x2={x + 3.2} y2={sopranoPos.yTreble - stemLength} stroke="#fb7185" strokeWidth="1.2" strokeLinecap="round" />
 
               {/* 2. ALTO */}
               {altoPos.ledgerLines.map((ly, li) => (
-                <line key={`a-ledg-${li}`} x1={x - 10} y1={ly} x2={x + 10} y2={ly} stroke="#475569" strokeWidth="2.0" strokeLinecap="round" />
+                <line key={`a-ledg-${li}`} x1={x - 10} y1={ly} x2={x + 10} y2={ly} stroke="#475569" strokeWidth="1.2" strokeLinecap="round" />
               ))}
               {altoPos.accidental && (
-                <text x={x - 12} y={altoPos.yTreble + 3.5} fontSize="11" fill="#fbbf24" fontWeight="extrabold">
+                <text x={x - 12} y={altoPos.yTreble + 3.5} fontSize="11" fill="#fbbf24" fontWeight="normal">
                   {altoPos.accidental}
                 </text>
               )}
               <ellipse cx={x} cy={altoPos.yTreble} rx="4" ry="3" fill="#f59e0b" stroke="#fde68a" strokeWidth="0.8" transform={`rotate(-20 ${x} ${altoPos.yTreble})`} />
-              <line x1={x - 3.2} y1={altoPos.yTreble} x2={x - 3.2} y2={altoPos.yTreble + stemLength} stroke="#fbbf24" strokeWidth="1.6" strokeLinecap="round" />
+              <line x1={x - 3.2} y1={altoPos.yTreble} x2={x - 3.2} y2={altoPos.yTreble + stemLength} stroke="#fbbf24" strokeWidth="1.2" strokeLinecap="round" />
 
               {/* 3. TENOR */}
               {tenorPos.ledgerLines.map((ly, li) => (
-                <line key={`t-ledg-${li}`} x1={x - 10} y1={ly} x2={x + 10} y2={ly} stroke="#475569" strokeWidth="2.0" strokeLinecap="round" />
+                <line key={`t-ledg-${li}`} x1={x - 10} y1={ly} x2={x + 10} y2={ly} stroke="#475569" strokeWidth="1.2" strokeLinecap="round" />
               ))}
               {tenorPos.accidental && (
-                <text x={x - 12} y={tenorPos.yBass + 3.5} fontSize="11" fill="#34d399" fontWeight="extrabold">
+                <text x={x - 12} y={tenorPos.yBass + 3.5} fontSize="11" fill="#34d399" fontWeight="normal">
                   {tenorPos.accidental}
                 </text>
               )}
               <ellipse cx={x} cy={tenorPos.yBass} rx="4" ry="3" fill="#10b981" stroke="#6ee7b7" strokeWidth="0.8" transform={`rotate(-20 ${x} ${tenorPos.yBass})`} />
-              <line x1={x + 3.2} y1={tenorPos.yBass} x2={x + 3.2} y2={tenorPos.yBass - stemLength} stroke="#34d399" strokeWidth="1.6" strokeLinecap="round" />
+              <line x1={x + 3.2} y1={tenorPos.yBass} x2={x + 3.2} y2={tenorPos.yBass - stemLength} stroke="#34d399" strokeWidth="1.2" strokeLinecap="round" />
 
               {/* 4. BASS */}
               {bassPos.ledgerLines.map((ly, li) => (
-                <line key={`b-ledg-${li}`} x1={x - 10} y1={ly} x2={x + 10} y2={ly} stroke="#475569" strokeWidth="2.0" strokeLinecap="round" />
+                <line key={`b-ledg-${li}`} x1={x - 10} y1={ly} x2={x + 10} y2={ly} stroke="#475569" strokeWidth="1.2" strokeLinecap="round" />
               ))}
               {bassPos.accidental && (
-                <text x={x - 12} y={bassPos.yBass + 3.5} fontSize="11" fill="#a78bfa" fontWeight="extrabold">
+                <text x={x - 12} y={bassPos.yBass + 3.5} fontSize="11" fill="#a78bfa" fontWeight="normal">
                   {bassPos.accidental}
                 </text>
               )}
               <ellipse cx={x} cy={bassPos.yBass} rx="4" ry="3" fill="#8b5cf6" stroke="#c4b5fd" strokeWidth="0.8" transform={`rotate(-20 ${x} ${bassPos.yBass})`} />
-              <line x1={x - 3.2} y1={bassPos.yBass} x2={x - 3.2} y2={bassPos.yBass + stemLength} stroke="#a78bfa" strokeWidth="1.6" strokeLinecap="round" />
+              <line x1={x - 3.2} y1={bassPos.yBass} x2={x - 3.2} y2={bassPos.yBass + stemLength} stroke="#a78bfa" strokeWidth="1.2" strokeLinecap="round" />
 
               {/* --- SEVENTH BADGE & RESOLUTION ARROW --- */}
               {seventhInfo && seventhY !== null && (
@@ -413,13 +413,13 @@ export const SATBGrandStaff: React.FC<SATBGrandStaffProps> = ({
                     fill="#78350f"
                     fillOpacity="0.85"
                     stroke="#f59e0b"
-                    strokeWidth="1.2"
+                    strokeWidth="1.0"
                   />
                   <text
                     x={x + 7 + (seventhInfo.resolution ? 9 : 6.5)}
                     y={seventhY + 3}
                     fontSize="9.5"
-                    fontWeight="900"
+                    fontWeight="500"
                     fill="#fef08a"
                     textAnchor="middle"
                     fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"

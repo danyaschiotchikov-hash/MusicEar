@@ -344,16 +344,16 @@ export const TonalModeCard: React.FC<TonalModeCardProps> = ({
         task.isRootPosition));
 
   return (
-    <div className="w-full flex flex-col gap-4 max-w-4xl mx-auto">
+    <div className="w-full flex flex-col gap-3.5 max-w-4xl mx-auto select-none">
       {/* 1. APPLE HIG CONTROL HEADER BAR */}
-      <div className="bg-slate-900/60 backdrop-blur-2xl border border-white/10 rounded-2xl p-4 shadow-xl space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Theme Selector & View Mode Segmented Pill */}
-          <div className="flex items-center gap-2.5 flex-wrap">
+      <div className="bg-slate-900/80 backdrop-blur-2xl border border-slate-800 rounded-2xl p-3 sm:p-3.5 shadow-sm space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Theme Selector & View Mode Segmented Controls */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             <select
               value={activeThemeId}
               onChange={(e) => handleSelectTheme(e.target.value as TonalThemeId)}
-              className="bg-slate-950/90 border border-white/10 text-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none cursor-pointer transition shadow-inner hover:border-white/20"
+              className="h-8 bg-slate-950/90 border border-slate-800 text-slate-200 rounded-lg px-2.5 text-xs font-semibold focus:outline-none cursor-pointer transition shadow-inner hover:border-slate-700"
             >
               {TONAL_THEMES.map((theme) => (
                 <option key={theme.id} value={theme.id}>
@@ -362,43 +362,46 @@ export const TonalModeCard: React.FC<TonalModeCardProps> = ({
               ))}
             </select>
 
-            {/* iOS Segmented Pill View Switcher */}
-            <div className="flex items-center bg-slate-950/80 border border-white/5 rounded-xl p-1 text-xs shadow-inner">
+            {/* Apple Segmented View Switcher */}
+            <div className="flex items-center gap-0.5 bg-slate-950/70 border border-slate-800 p-0.5 rounded-lg shadow-inner">
               <button
                 type="button"
                 onClick={() => setIsTableView(false)}
-                className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold ${
+                className={`w-9 sm:w-10 h-8 flex items-center justify-center rounded-md transition-all cursor-pointer ${
                   !isTableView
-                    ? 'bg-indigo-600 text-white shadow-md'
+                    ? 'bg-indigo-600 text-white shadow-xs font-semibold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Фокус (тема)"
+                aria-label="Фокус"
               >
-                <Target className="w-3.5 h-3.5" />
-                <span>Фокус</span>
+                <Target className="w-4 h-4 shrink-0" />
               </button>
               <button
                 type="button"
                 onClick={() => setIsTableView(true)}
-                className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold ${
+                className={`w-9 sm:w-10 h-8 flex items-center justify-center rounded-md transition-all cursor-pointer ${
                   isTableView
-                    ? 'bg-indigo-600 text-white shadow-md'
+                    ? 'bg-indigo-600 text-white shadow-xs font-semibold'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Все созвучия (T-S-D-M)"
+                aria-label="Все созвучия"
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Все (T-S-D)</span>
+                <LayoutGrid className="w-4 h-4 shrink-0" />
               </button>
             </div>
           </div>
 
-          {/* Tonality & Notation Pills */}
-          <div className="flex items-center gap-2 flex-wrap">
+          {/* Tonality, Mode & Inversion Controls */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Tonic Note */}
             <select
               value={settings.tonalRootNote ?? 'C'}
               onChange={(e) => onSettingsChange?.({ tonalRootNote: e.target.value })}
-              className="bg-slate-950/80 border border-white/10 text-amber-300 font-mono font-bold rounded-xl px-2.5 py-1.5 text-xs cursor-pointer focus:outline-none shadow-inner"
+              className="h-8 bg-slate-950/90 border border-slate-800 text-amber-300 font-mono font-bold rounded-lg px-2 text-xs cursor-pointer focus:outline-none shadow-inner"
             >
-              <option value="random">Случайная тоника</option>
+              <option value="random">🎲 Рандом</option>
               {TONIC_NOTE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
@@ -406,107 +409,139 @@ export const TonalModeCard: React.FC<TonalModeCardProps> = ({
               ))}
             </select>
 
-            {/* Major / Minor Pill */}
-            <div className="flex items-center bg-slate-950/80 border border-white/5 p-1 rounded-xl text-xs shadow-inner">
+            {/* Major / Minor Segmented Symbols */}
+            <div className="flex items-center gap-0.5 bg-slate-950/70 border border-slate-800 p-0.5 rounded-lg shadow-inner">
               <button
                 type="button"
                 onClick={() => onSettingsChange?.({ tonalScaleMode: 'major' })}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer text-xs font-semibold ${
+                className={`w-9 sm:w-10 h-8 flex items-center justify-center rounded-md transition-all cursor-pointer text-xs font-bold ${
                   currentScaleMode === 'major'
-                    ? 'bg-slate-800 text-slate-100 shadow-xs'
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Мажор"
+                aria-label="Мажор"
               >
-                Мажор
+                <span className="text-sm">☼</span>
               </button>
               <button
                 type="button"
                 onClick={() => onSettingsChange?.({ tonalScaleMode: 'minor' })}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer text-xs font-semibold ${
+                className={`w-9 sm:w-10 h-8 flex items-center justify-center rounded-md transition-all cursor-pointer text-xs font-bold ${
                   currentScaleMode === 'minor'
-                    ? 'bg-slate-800 text-slate-100 shadow-xs'
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Минор"
+                aria-label="Минор"
               >
-                Минор
+                <span className="text-sm">☽</span>
               </button>
             </div>
 
-            {/* Inversions Pill */}
-            <button
-              type="button"
-              onClick={() =>
-                onSettingsChange?.({
-                  tonalRootPositionOnly: !rootOnly,
-                  tonalInversionsMode: !rootOnly ? 'root_only' : 'popular',
-                })
-              }
-              className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-inner ${
-                !rootOnly
-                  ? 'bg-indigo-950/50 border-indigo-500/40 text-indigo-300'
-                  : 'bg-slate-950/80 border-white/10 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>{!rootOnly ? 'С обращ.' : 'Только 5/3'}</span>
-            </button>
-
-            {/* Notation Pill */}
-            <div className="flex items-center bg-slate-950/80 border border-white/5 p-1 rounded-xl text-xs shadow-inner">
+            {/* Inversions Segmented Button */}
+            <div className="flex items-center gap-0.5 bg-slate-950/70 border border-slate-800 p-0.5 rounded-lg shadow-inner">
               <button
                 type="button"
-                onClick={() => onSettingsChange?.({ progressionNotation: 'roman' })}
-                className={`px-2 py-1 rounded-lg transition-all cursor-pointer text-xs font-semibold ${
-                  currentNotation === 'roman'
-                    ? 'bg-slate-800 text-slate-100'
+                onClick={() =>
+                  onSettingsChange?.({
+                    tonalRootPositionOnly: true,
+                    tonalInversionsMode: 'root_only',
+                  })
+                }
+                className={`h-8 px-2 flex items-center justify-center rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
+                  rootOnly
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Только основное положение (5/3)"
               >
-                I-IV
+                5/3
               </button>
               <button
                 type="button"
-                onClick={() => onSettingsChange?.({ progressionNotation: 'analytical' })}
-                className={`px-2 py-1 rounded-lg transition-all cursor-pointer text-xs font-semibold ${
-                  currentNotation === 'analytical'
-                    ? 'bg-slate-800 text-slate-100'
+                onClick={() =>
+                  onSettingsChange?.({
+                    tonalRootPositionOnly: false,
+                    tonalInversionsMode: 'popular',
+                  })
+                }
+                className={`h-8 px-2 flex items-center justify-center rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
+                  !rootOnly
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Все популярные обращения"
+              >
+                Обр.
+              </button>
+            </div>
+
+            {/* Notation Segmented Control */}
+            <div className="flex items-center gap-0.5 bg-slate-950/70 border border-slate-800 p-0.5 rounded-lg shadow-inner">
+              <button
+                type="button"
+                onClick={() => onSettingsChange?.({ progressionNotation: 'analytical' })}
+                className={`h-8 px-2 flex items-center justify-center rounded-md transition-all cursor-pointer text-xs font-mono font-bold ${
+                  currentNotation === 'analytical'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Аналитическая нотация (T-S-D)"
               >
                 T-S-D
               </button>
               <button
                 type="button"
-                onClick={() => onSettingsChange?.({ progressionNotation: 'letter' })}
-                className={`px-2 py-1 rounded-lg transition-all cursor-pointer text-xs font-semibold ${
-                  currentNotation === 'letter'
-                    ? 'bg-slate-800 text-slate-100'
+                onClick={() => onSettingsChange?.({ progressionNotation: 'roman' })}
+                className={`h-8 px-2 flex items-center justify-center rounded-md transition-all cursor-pointer text-xs font-mono font-bold ${
+                  currentNotation === 'roman'
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
+                title="Ступени (римские)"
               >
-                Буквы
+                I–VII
+              </button>
+              <button
+                type="button"
+                onClick={() => onSettingsChange?.({ progressionNotation: 'letter' })}
+                className={`h-8 px-2 flex items-center justify-center rounded-md transition-all cursor-pointer text-xs font-mono font-bold ${
+                  currentNotation === 'letter'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Буквенные обозначения (C, Dm, G7)"
+              >
+                C-Dm
               </button>
             </div>
 
+            {/* Settings Modal Button */}
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="p-2 rounded-xl bg-slate-950/80 hover:bg-slate-900 text-slate-400 hover:text-slate-200 border border-white/10 transition cursor-pointer shadow-inner"
-              title="Настройки созвучий"
+              className="w-9 sm:w-10 h-8 flex items-center justify-center rounded-lg bg-slate-950/80 hover:bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 transition cursor-pointer shadow-inner"
+              title="Параметры созвучий"
+              aria-label="Параметры созвучий"
             >
-              <SlidersHorizontal className="w-4 h-4" />
+              <SlidersHorizontal className="w-4 h-4 shrink-0" />
             </button>
           </div>
         </div>
 
-        {/* Pedagogical Hint Bar */}
-        <div className="pt-2.5 border-t border-white/10 flex items-center justify-between text-xs text-slate-400 px-1">
-          <span className="text-slate-300 font-medium">
-            {currentThemeDef.descRu}
-          </span>
-          <span className="font-mono text-[11px] text-slate-400 shrink-0 ml-2">
-            Тональность: <strong className="text-amber-300 font-bold">{task.keyNameRu}</strong>
-          </span>
+        {/* Apple HIG Metadata Strip (Concise, no verbose filler) */}
+        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs px-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400">Тема:</span>
+            <span className="text-slate-200 font-semibold">{currentThemeDef.title}</span>
+          </div>
+          <div className="flex items-center gap-1.5 font-mono text-xs">
+            <span className="text-slate-400">Тональность:</span>
+            <span className="text-amber-300 font-bold bg-slate-950/70 border border-slate-800 px-2 py-0.5 rounded-lg shadow-xs">
+              {task.keyNameRu}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -518,11 +553,11 @@ export const TonalModeCard: React.FC<TonalModeCardProps> = ({
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between text-xs text-slate-400 px-1">
                 <span className="font-semibold text-slate-200 flex items-center gap-1.5">
-                  <Target className="w-4 h-4 text-indigo-400" />
-                  Созвучия темы: {currentThemeDef.title}
+                  <Target className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Созвучия</span>
                 </span>
-                <span className="font-mono text-[11px] text-slate-500">
-                  Клавиши: [1]–[{Math.min(activeChords.length, 9)}]
+                <span className="font-mono text-[11px] text-slate-500 bg-slate-950/70 border border-slate-800 px-2 py-0.5 rounded-lg">
+                  [1]–[{Math.min(activeChords.length, 9)}]
                 </span>
               </div>
 
@@ -843,17 +878,17 @@ export const TonalModeCard: React.FC<TonalModeCardProps> = ({
             </div>
           ) : (
             <div className="w-full flex flex-col items-center justify-center text-center p-6 gap-4 min-h-[260px]">
-              <div className="w-12 h-12 rounded-2xl bg-slate-950 border border-white/10 flex items-center justify-center text-indigo-400 shadow-inner">
+              <div className="w-12 h-12 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-indigo-400 shadow-inner">
                 <Volume2 className="w-6 h-6 animate-pulse" />
               </div>
 
-              <div className="space-y-1.5">
-                <h4 className="text-sm font-bold text-slate-100">
-                  Определите созвучие на слух
-                </h4>
-                <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-                  Выберите вариант созвучия слева или нажмите цифру на клавиатуре
-                </p>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
+                  Тональность
+                </span>
+                <span className="text-2xl font-bold font-mono text-amber-300">
+                  {task.keyNameRu}
+                </span>
               </div>
 
               <div className="flex items-center gap-2 w-full max-w-xs pt-1">

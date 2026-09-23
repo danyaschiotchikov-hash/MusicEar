@@ -110,10 +110,10 @@ export const TonalChordSettingsModal: React.FC<TonalChordSettingsModalProps> = (
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
-                Настройка раздела тональности
+                Параметры тональности
               </h2>
               <p className="text-xs text-slate-400">
-                Темы обучения, уровни сложности и изучаемые созвучия
+                Темы и изучаемые созвучия
               </p>
             </div>
           </div>
@@ -134,10 +134,7 @@ export const TonalChordSettingsModal: React.FC<TonalChordSettingsModalProps> = (
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
                 <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-                Темы и уровни сложности
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Выберите готовую тему для постепенного освоения
+                Темы
               </span>
             </div>
 

@@ -74,6 +74,8 @@ export interface PlaybackSettings {
   autoAdvanceOnCorrect?: boolean; // auto-play new task when correct
   degreeAutoResolve?: boolean; // auto-play resolution to I degree on answer
   degreeType?: 'diatonic' | 'chromatic'; // 'diatonic' (7) or 'chromatic' (12)
+  degreeRootNote?: string; // 'C' by default, or 'random', 'D', 'G', etc.
+  degreeScaleMode?: 'major' | 'minor'; // 'major' by default, or 'minor'
   cadenceBeforeTask?: boolean; // auto-play key cadence before playing task note
   mnemonicMode?: 'none' | 'color_functions' | 'interval_name'; // mnemonic learning aid mode
   theme?: ThemeMode;
@@ -81,6 +83,9 @@ export interface PlaybackSettings {
   tonalTiming?: number; // -1.0 to 1.5s (-: overlap, +: gap pause)
   spacedRepetitionEnabled?: boolean; // Smart Spaced Repetition adaptive task selection based on error statistics
   cardPalette?: 'indigo' | 'espresso' | 'emerald' | 'violet';
+  twoNotesBalance?: number; // -1.0 to 1.0 (0 is balanced 50/50, <0 louder lower note, >0 louder upper note)
+  twoNotesStyle?: 'harmonic' | 'arpeggio'; // playback style specifically for scale degree two-notes mode
+  degreeSubMode?: 'cards' | 'marathon'; // practice cards vs marathon survival in scale degree mode
 }
 
 export type TrainingMode = 'standard' | 'oral' | 'construction' | 'degree' | 'tonal' | 'progression' | 'harmonization' | 'pitch_memory' | 'marathon';

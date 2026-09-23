@@ -80,43 +80,62 @@ export function calculateItemWeight(
 }
 
 /**
- * Weighted random selector based on Spaced Repetition weights.
+ * Weighted random selector based on Spaced Repetition weights and anti-repetition memory.
+ * Excludes items that appeared in recentHistoryIds to prevent annoying back-to-back repetitions.
  */
 export function pickWeightedItem<T>(
   items: T[],
   getStatId: (item: T) => string,
   stats?: AppStats,
-  enabled: boolean = true
+  enabled: boolean = true,
+  recentHistoryIds?: string[]
 ): T {
   if (items.length === 0) {
     throw new Error('Cannot pick from empty item pool');
   }
 
-  if (items.length === 1 || !enabled || !stats) {
-    return items[Math.floor(Math.random() * items.length)];
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  // 1. Anti-repetition filter: prioritize items not seen in recent turns
+  let candidates = items;
+  if (recentHistoryIds && recentHistoryIds.length > 0 && items.length > 2) {
+    const nonRecent = items.filter((item) => !recentHistoryIds.includes(getStatId(item)));
+    if (nonRecent.length > 0) {
+      candidates = nonRecent;
+    }
+  }
+
+  if (!enabled || !stats) {
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   const now = Date.now();
-  const weights = items.map((item) => {
+  const weights = candidates.map((item) => {
     const id = getStatId(item);
     const stat = stats.items[id];
-    return calculateItemWeight(id, stat, now);
+    let w = calculateItemWeight(id, stat, now);
+    if (recentHistoryIds && recentHistoryIds.includes(id)) {
+      w *= 0.05; // strongly dampen recent items
+    }
+    return w;
   });
 
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   if (totalWeight <= 0) {
-    return items[Math.floor(Math.random() * items.length)];
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   let randomVal = Math.random() * totalWeight;
-  for (let i = 0; i < items.length; i++) {
+  for (let i = 0; i < candidates.length; i++) {
     randomVal -= weights[i];
     if (randomVal <= 0) {
-      return items[i];
+      return candidates[i];
     }
   }
 
-  return items[items.length - 1];
+  return candidates[candidates.length - 1];
 }
 
 /**

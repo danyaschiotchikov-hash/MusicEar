@@ -58,6 +58,7 @@ import {
   generateScaleDegreeTask,
   ScaleDegreeTask,
 } from './audio/solfegeHelper';
+import { resolveTonalInterval } from './audio/tonalIntervalResolution';
 import { pickWeightedItem } from './utils/spacedRepetition';
 import { getVoicingsForDegree, findVoicingById } from './audio/tonalChords';
 import { realizeProgression, RealizedProgression, HarmonicProgressionTemplate, revoiceProgression } from './audio/harmonicProgressions';
@@ -168,24 +169,89 @@ export default function App() {
   const [progressionActiveStepIndex, setProgressionActiveStepIndex] = useState<number>(-1);
   const [progressionActiveMidis, setProgressionActiveMidis] = useState<number[]>([]);
 
+  // Reference for anti-repetition item history in standard mode
+  const recentItemIdsRef = useRef<string[]>([]);
+  const degreeCadenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Ensure application produces no automatic sounds on first load/visit
+  const isFirstAppLoadRef = useRef(true);
+
+  // Key Cadence playback for Tonal and Scale Degree modes
+  const handlePlayKeyCadence = useCallback(
+    (tonicNote: string, scaleMode: 'major' | 'minor', onAfterFinish?: () => void) => {
+      audioEngine.stopAll();
+      setIsPlaying(true);
+      setStatusMessage({
+        text: `Настройка на тональность: ${tonicNote} ${scaleMode === 'major' ? 'мажор' : 'минор'} (T-S-D-T)...`,
+        type: 'playing',
+      });
+
+      const offsets: Record<string, number> = {
+        C: 0, 'C#': 1, 'C♯': 1, Cis: 1, Des: 1, 'Cis / Des': 1,
+        D: 2, 'D#': 3, 'D♯': 3, Dis: 3, Es: 3, 'Dis / Es': 3,
+        E: 4, F: 5,
+        'F#': 6, 'F♯': 6, Fis: 6, Ges: 6, 'Fis / Ges': 6,
+        G: 7, 'G#': 8, 'G♯': 8, Gis: 8, As: 8, 'Gis / As': 8,
+        A: 9, 'A#': 10, 'A♯': 10, Ais: 10, 'B♭': 10, Bb: 10, 'Ais / B': 10,
+        H: 11, B: 11,
+      };
+      const pitch = offsets[tonicNote] ?? 9;
+
+      audioEngine.playKeyCadence(
+        pitch,
+        scaleMode,
+        settings,
+        (midis) => {
+          setTonalActiveMidis(midis);
+        },
+        () => {
+          setTonalActiveMidis([]);
+          if (onAfterFinish) {
+            onAfterFinish();
+          } else {
+            setIsPlaying(false);
+            setStatusMessage({
+              text: `Тональность ${tonicNote} ${scaleMode === 'major' ? 'мажор' : 'минор'} настроена.`,
+              type: 'idle',
+            });
+          }
+        }
+      );
+    },
+    [settings]
+  );
+
   // Scale Degree Handlers
   const handleNewDegreeTask = useCallback(
-    (forceCadence = false, overrideTwoNotes?: boolean) => {
+    (forceCadence = false, overrideTwoNotes?: boolean, playAudio = true) => {
       if (autoAdvanceTimerRef.current) {
         clearTimeout(autoAdvanceTimerRef.current);
         autoAdvanceTimerRef.current = null;
       }
+      if (degreeCadenceTimerRef.current) {
+        clearTimeout(degreeCadenceTimerRef.current);
+        degreeCadenceTimerRef.current = null;
+      }
       audioEngine.stopAll();
       const effectiveTwoNotes = overrideTwoNotes !== undefined ? overrideTwoNotes : degreeIsTwoNotes;
       const task = generateScaleDegreeTask(
-        settings.tonalRootNote ?? 'C',
-        settings.tonalScaleMode ?? 'major',
+        settings.degreeRootNote ?? settings.tonalRootNote ?? 'C',
+        settings.degreeScaleMode ?? settings.tonalScaleMode ?? 'major',
         settings.degreeType ?? 'diatonic',
         stats,
         settings.spacedRepetitionEnabled ?? true,
         effectiveTwoNotes
       );
       setDegreeTask(task);
+
+      if (!playAudio) {
+        setIsPlaying(false);
+        setStatusMessage({
+          text: `Тональность ${task.keyNameRu}. Нажмите «Слушать», чтобы начать.`,
+          type: 'idle',
+        });
+        return;
+      }
+
       setIsPlaying(true);
       setStatusMessage({
         text: effectiveTwoNotes
@@ -195,18 +261,23 @@ export default function App() {
       });
 
       const playNotes = (startTime: number) => {
+        const isArpeggio = settings.twoNotesStyle === 'arpeggio' || settings.style === 'arpeggio';
+        const balance = settings.twoNotesBalance ?? 0;
         if (task.isTwoNotes && task.secondTargetMidi) {
-          if (settings.style === 'arpeggio') {
-            audioEngine.playSingleNote(task.targetMidi, startTime, 1.2, 1.25, settings);
-            audioEngine.playSingleNote(task.secondTargetMidi, startTime + 0.45, 1.4, 1.25, settings);
-            window.setTimeout(() => setIsPlaying(false), 1900);
-          } else {
-            audioEngine.playChord([task.targetMidi, task.secondTargetMidi], startTime, 1.6, 1.25, settings);
-            window.setTimeout(() => setIsPlaying(false), 1600);
-          }
+          audioEngine.playTwoNotes(
+            task.targetMidi,
+            task.secondTargetMidi,
+            startTime,
+            2.6,
+            1.25,
+            settings,
+            isArpeggio,
+            balance
+          );
+          window.setTimeout(() => setIsPlaying(false), isArpeggio ? 3200 : 2600);
         } else {
-          audioEngine.playSingleNote(task.targetMidi, startTime, 1.5, 1.25, settings);
-          window.setTimeout(() => setIsPlaying(false), 1500);
+          audioEngine.playSingleNote(task.targetMidi, startTime, 2.4, 1.25, settings);
+          window.setTimeout(() => setIsPlaying(false), 2400);
         }
       };
 
@@ -215,17 +286,18 @@ export default function App() {
       // Check if tuning cadence should be played before task note (e.g. when forced on key change or cadence enabled)
       const playCadence = forceCadence || settings.cadenceBeforeTask === true;
       if (playCadence) {
-        // Play tonic cadence / chord first, then task note(s)
-        handlePlayKeyCadence(task.tonicNoteName, task.keyScaleMode);
-        window.setTimeout(() => {
-          const noteNow = audioEngine.getContext().currentTime + 0.05;
-          playNotes(noteNow);
-        }, 1200);
+        // Play tonic cadence (D7 -> T) cleanly; once it resolves, pause musically 300ms, then play task notes
+        handlePlayKeyCadence(task.tonicNoteName, task.keyScaleMode, () => {
+          degreeCadenceTimerRef.current = setTimeout(() => {
+            const noteNow = audioEngine.getContext().currentTime + 0.05;
+            playNotes(noteNow);
+          }, 300);
+        });
       } else {
         playNotes(now);
       }
     },
-    [settings, stats, degreeIsTwoNotes]
+    [settings, stats, degreeIsTwoNotes, handlePlayKeyCadence]
   );
 
   const handleToggleDegreeTwoNotes = useCallback(
@@ -241,18 +313,50 @@ export default function App() {
     audioEngine.stopAll();
     setIsPlaying(true);
     const now = audioEngine.getContext().currentTime + 0.05;
+    const isArpeggio = settings.twoNotesStyle === 'arpeggio' || settings.style === 'arpeggio';
+    const balance = settings.twoNotesBalance ?? 0;
     if (degreeTask.isTwoNotes && degreeTask.secondTargetMidi) {
-      if (settings.style === 'arpeggio') {
-        audioEngine.playSingleNote(degreeTask.targetMidi, now, 1.2, 1.25, settings);
-        audioEngine.playSingleNote(degreeTask.secondTargetMidi, now + 0.45, 1.4, 1.25, settings);
-        window.setTimeout(() => setIsPlaying(false), 1900);
-      } else {
-        audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 1.6, 1.25, settings);
-        window.setTimeout(() => setIsPlaying(false), 1600);
+      if (degreeTask.revealed) {
+        // When answer is revealed in 2 sounds mode: resolve both sounds according to rules of interval resolution WITHOUT PAUSE
+        const resolution = resolveTonalInterval(
+          degreeTask.targetMidi,
+          degreeTask.secondTargetMidi,
+          degreeTask.tonicMidi,
+          degreeTask.keyNameRu ? degreeTask.keyNameRu.split(' ')[0] : degreeTask.tonicNoteName,
+          degreeTask.keyScaleMode === 'minor' ? 'minor' : 'major'
+        );
+
+        if (resolution && resolution.status === 'RESOLVED' && resolution.resolvedInterval) {
+          // Play initial interval (0.75s)
+          audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 0.75, 1.2, settings);
+          // Play resolved interval immediately at now + 0.75s (no pause!)
+          const resolveTime = now + 0.75;
+          audioEngine.playChord(
+            [resolution.resolvedInterval.lowerVoice.midi, resolution.resolvedInterval.upperVoice.midi],
+            resolveTime,
+            1.3,
+            1.25,
+            settings
+          );
+          window.setTimeout(() => setIsPlaying(false), 2100);
+          return;
+        }
       }
+
+      audioEngine.playTwoNotes(
+        degreeTask.targetMidi,
+        degreeTask.secondTargetMidi,
+        now,
+        2.6,
+        1.25,
+        settings,
+        isArpeggio,
+        balance
+      );
+      window.setTimeout(() => setIsPlaying(false), isArpeggio ? 3200 : 2600);
     } else {
-      audioEngine.playSingleNote(degreeTask.targetMidi, now, 1.5, 1.25, settings);
-      window.setTimeout(() => setIsPlaying(false), 1500);
+      audioEngine.playSingleNote(degreeTask.targetMidi, now, 2.4, 1.25, settings);
+      window.setTimeout(() => setIsPlaying(false), 2400);
     }
   }, [degreeTask, settings]);
 
@@ -373,15 +477,52 @@ export default function App() {
 
           const shouldResolve = settings.degreeAutoResolve !== false;
 
-          if (shouldResolve) {
+          if (degreeTask.secondTargetMidi) {
+            // In 2-notes mode, resolve both sounds according to rules of interval resolution WITHOUT PAUSE!
             audioEngine.stopAll();
             setIsPlaying(true);
             const now = audioEngine.getContext().currentTime + 0.05;
-            if (degreeTask.secondTargetMidi) {
-              audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 0.85, 1.25, settings);
+
+            const resolution = resolveTonalInterval(
+              degreeTask.targetMidi,
+              degreeTask.secondTargetMidi,
+              degreeTask.tonicMidi,
+              degreeTask.keyNameRu ? degreeTask.keyNameRu.split(' ')[0] : degreeTask.tonicNoteName,
+              degreeTask.keyScaleMode === 'minor' ? 'minor' : 'major'
+            );
+
+            if (resolution && resolution.status === 'RESOLVED' && resolution.resolvedInterval) {
+              // 1. Initial 2 sounds
+              audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 0.75, 1.2, settings);
+              // 2. Resolved interval starts immediately at now + 0.75s (no pause!)
+              const resolveTime = now + 0.75;
+              audioEngine.playChord(
+                [resolution.resolvedInterval.lowerVoice.midi, resolution.resolvedInterval.upperVoice.midi],
+                resolveTime,
+                1.3,
+                1.25,
+                settings
+              );
+
+              if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+              autoAdvanceTimerRef.current = window.setTimeout(() => {
+                setIsPlaying(false);
+                handleNewDegreeTask();
+              }, 2250);
             } else {
-              audioEngine.playSingleNote(degreeTask.targetMidi, now, 0.85, 1.25, settings);
+              // Stable interval, no resolution needed
+              audioEngine.playChord([degreeTask.targetMidi, degreeTask.secondTargetMidi], now, 1.1, 1.25, settings);
+              if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+              autoAdvanceTimerRef.current = window.setTimeout(() => {
+                setIsPlaying(false);
+                handleNewDegreeTask();
+              }, 1400);
             }
+          } else if (shouldResolve) {
+            audioEngine.stopAll();
+            setIsPlaying(true);
+            const now = audioEngine.getContext().currentTime + 0.05;
+            audioEngine.playSingleNote(degreeTask.targetMidi, now, 0.85, 1.25, settings);
 
             window.setTimeout(() => {
               const resSec = handlePlayDegreeResolution();
@@ -452,6 +593,18 @@ export default function App() {
       setIsDroneActive(true);
     }
   }, [isDroneActive, degreeTask, settings]);
+
+  const handleResetDegreeMarathon = useCallback(() => {
+    setDegreeMarathonStreak(0);
+  }, []);
+
+  const handleSetTonalActiveMidis = useCallback((midis: number[]) => {
+    setTonalActiveMidis(midis);
+  }, []);
+
+  const handleOpenProgressionCatalog = useCallback(() => {
+    setIsProgressionCatalogOpen(true);
+  }, []);
 
   // Collapsible Left Drawer State
   const [isLeftDrawerOpen, setIsLeftDrawerOpen] = useState(false);
@@ -621,47 +774,7 @@ export default function App() {
   );
 
   // Tonal Mode Handlers
-  const handlePlayKeyCadence = useCallback(
-    (tonicNote: string, scaleMode: 'major' | 'minor') => {
-      audioEngine.stopAll();
-      setIsPlaying(true);
-      setStatusMessage({
-        text: `Настройка на тональность: ${tonicNote} ${scaleMode === 'major' ? 'мажор' : 'минор'} (T-S-D-T)...`,
-        type: 'playing',
-      });
-
-      const offsets: Record<string, number> = {
-        C: 0, 'C#': 1, 'C♯': 1, Cis: 1, Des: 1, 'Cis / Des': 1,
-        D: 2, 'D#': 3, 'D♯': 3, Dis: 3, Es: 3, 'Dis / Es': 3,
-        E: 4, F: 5,
-        'F#': 6, 'F♯': 6, Fis: 6, Ges: 6, 'Fis / Ges': 6,
-        G: 7, 'G#': 8, 'G♯': 8, Gis: 8, As: 8, 'Gis / As': 8,
-        A: 9, 'A#': 10, 'A♯': 10, Ais: 10, 'B♭': 10, Bb: 10, 'Ais / B': 10,
-        H: 11, B: 11,
-      };
-      const pitch = offsets[tonicNote] ?? 9;
-
-      audioEngine.playKeyCadence(
-        pitch,
-        scaleMode,
-        settings,
-        (midis) => {
-          setTonalActiveMidis(midis);
-        },
-        () => {
-          setTonalActiveMidis([]);
-          setIsPlaying(false);
-          setStatusMessage({
-            text: `Тональность ${tonicNote} ${scaleMode === 'major' ? 'мажор' : 'минор'} настроена.`,
-            type: 'idle',
-          });
-        }
-      );
-    },
-    [settings]
-  );
-
-  const handleNewTonalTask = useCallback(() => {
+  const handleNewTonalTask = useCallback((playAudio = true) => {
     audioEngine.stopAll();
     const task = generateSmartVoicingTask(
       settings.tonalRootNote ?? 'C',
@@ -674,6 +787,16 @@ export default function App() {
       settings.spacedRepetitionEnabled ?? true
     );
     setTonalTask(task);
+
+    if (!playAudio) {
+      setIsPlaying(false);
+      setStatusMessage({
+        text: 'Тональность настроена. Нажмите «Слушать», чтобы воспроизвести созвучие.',
+        type: 'idle',
+      });
+      return;
+    }
+
     setIsPlaying(true);
     setStatusMessage({
       text: `Слушайте: базовая нота ${task.baseNoteName} и созвучие...`,
@@ -833,7 +956,7 @@ export default function App() {
   }, []);
 
   // Progression Mode Handlers
-  const handleNewProgressionTask = useCallback(() => {
+  const handleNewProgressionTask = useCallback((playAudio = true) => {
     audioEngine.stopAll();
     const task = realizeProgression(
       undefined,
@@ -849,6 +972,16 @@ export default function App() {
     setProgressionTask(revoiced);
     setProgressionActiveStepIndex(-1);
     setProgressionActiveMidis([]);
+
+    if (!playAudio) {
+      setIsPlaying(false);
+      setStatusMessage({
+        text: `Оборот: «${revoiced.template.nameRu}» (${revoiced.keyNameRu}). Нажмите «Слушать».`,
+        type: 'idle',
+      });
+      return;
+    }
+
     setIsPlaying(true);
     setStatusMessage({
       text: `Слушайте: оборот в тональности ${revoiced.keyNameRu}...`,
@@ -868,6 +1001,45 @@ export default function App() {
       }
     );
   }, [settings]);
+
+  const handleSelectProgressionTemplate = useCallback(
+    (templateId: string) => {
+      audioEngine.stopAll();
+      const task = realizeProgression(
+        templateId,
+        settings.progressionRootNote ?? settings.tonalRootNote ?? 'C',
+        settings.tonalScaleMode ?? 'major',
+        settings.progressionCategories ?? 'all'
+      );
+      const revoiced = revoiceProgression(
+        task,
+        settings.progressionSpacing ?? 'original',
+        settings.progressionMelodicPosition ?? 'original'
+      );
+      setProgressionTask(revoiced);
+      setProgressionActiveStepIndex(-1);
+      setProgressionActiveMidis([]);
+      setIsPlaying(true);
+      setStatusMessage({
+        text: `Оборот: «${revoiced.template.nameRu}» (${revoiced.keyNameRu})`,
+        type: 'playing',
+      });
+      audioEngine.playProgressionTask(
+        revoiced,
+        settings,
+        (stepIdx, midis) => {
+          setProgressionActiveStepIndex(stepIdx);
+          setProgressionActiveMidis(midis);
+        },
+        () => {
+          setProgressionActiveStepIndex(-1);
+          setProgressionActiveMidis([]);
+          setIsPlaying(false);
+        }
+      );
+    },
+    [settings]
+  );
 
   const handlePlayHarmonizationMelodyOnly = useCallback(
     (template: MelodyHarmonizationTemplate) => {
@@ -1052,7 +1224,7 @@ export default function App() {
   );
 
   // New Question (Immediately interruptible on click!)
-  const handleNewTask = useCallback(() => {
+  const handleNewTask = useCallback((playAudio = true) => {
     // Clear any pending auto advance timer
     if (autoAdvanceTimerRef.current) {
       clearTimeout(autoAdvanceTimerRef.current);
@@ -1063,17 +1235,17 @@ export default function App() {
     audioEngine.stopAll();
 
     if (mode === 'degree') {
-      handleNewDegreeTask();
+      handleNewDegreeTask(false, undefined, playAudio);
       return;
     }
 
     if (mode === 'tonal') {
-      handleNewTonalTask();
+      handleNewTonalTask(playAudio);
       return;
     }
 
     if (mode === 'progression') {
-      handleNewProgressionTask();
+      handleNewProgressionTask(playAudio);
       return;
     }
 
@@ -1090,8 +1262,15 @@ export default function App() {
       pool,
       (i) => i.id,
       stats,
-      settings.spacedRepetitionEnabled ?? true
+      settings.spacedRepetitionEnabled ?? true,
+      recentItemIdsRef.current
     );
+
+    // Save chosen item to anti-repetition history
+    recentItemIdsRef.current.push(randomItem.id);
+    if (recentItemIdsRef.current.length > 5) {
+      recentItemIdsRef.current.shift();
+    }
 
     // Determine direction deterministically for this task
     let taskDirection: 'up' | 'down' = 'up';
@@ -1148,6 +1327,15 @@ export default function App() {
     setCurrentTask(newTask);
     setLastWrongAnswer(null);
 
+    if (!playAudio) {
+      setIsPlaying(false);
+      setStatusMessage({
+        text: 'Нажмите «Слушать» или «Новый звук», чтобы начать тренировку',
+        type: 'idle',
+      });
+      return;
+    }
+
     if (mode === 'marathon') {
       setStatusMessage({
         text: getRandomQuote(),
@@ -1177,7 +1365,7 @@ export default function App() {
       audioEngine.stopDrone();
       playCurrentTask(newTask);
     }
-  }, [activeItemIds, resolveRootMidi, settings, mode, playCurrentTask]);
+  }, [activeItemIds, resolveRootMidi, settings, mode, playCurrentTask, currentTask, stats, handleNewDegreeTask, handleNewTonalTask, handleNewProgressionTask]);
 
   // Replay (Interrupts any ongoing playback immediately!)
   const handleReplay = useCallback((overrideStyle?: 'harmonic' | 'arpeggio') => {
@@ -1331,13 +1519,21 @@ export default function App() {
     setSettings((prev) => {
       const updated = { ...prev, ...newSettings };
       
-      if ('progressionSpacing' in newSettings || 'progressionMelodicPosition' in newSettings) {
+      if (
+        'progressionRootNote' in newSettings ||
+        'tonalScaleMode' in newSettings ||
+        'progressionSpacing' in newSettings ||
+        'progressionMelodicPosition' in newSettings
+      ) {
         setProgressionTask((prevProg) => {
           if (!prevProg) return null;
+          const newRoot = updated.progressionRootNote ?? updated.tonalRootNote ?? prevProg.tonicNoteName;
+          const newMode = updated.tonalScaleMode ?? prevProg.scaleMode;
           const restoredTask = realizeProgression(
             prevProg.template.id,
-            prevProg.tonicNoteName,
-            prevProg.scaleMode
+            newRoot,
+            newMode,
+            updated.progressionCategories ?? 'all'
           );
           return revoiceProgression(
             restoredTask,
@@ -1682,6 +1878,10 @@ export default function App() {
 
   const handleSwitchMode = useCallback((newMode: TrainingMode) => {
     if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
+    if (degreeCadenceTimerRef.current) {
+      clearTimeout(degreeCadenceTimerRef.current);
+      degreeCadenceTimerRef.current = null;
+    }
     audioEngine.stopAll();
     audioEngine.stopDrone();
     setIsPlaying(false);
@@ -1698,21 +1898,34 @@ export default function App() {
   useEffect(() => {
     audioEngine.stopAll();
     audioEngine.stopCalibrationTone();
+    if (degreeCadenceTimerRef.current) {
+      clearTimeout(degreeCadenceTimerRef.current);
+      degreeCadenceTimerRef.current = null;
+    }
     if (mode !== 'construction' && mode !== 'degree') {
       audioEngine.stopDrone();
       setIsDroneActive(false);
     }
+    const isInitialLoad = isFirstAppLoadRef.current;
+    const shouldPlaySound = !isInitialLoad;
+
     if (mode === 'degree') {
-      handleNewDegreeTask();
+      handleNewDegreeTask(true, undefined, shouldPlaySound);
     }
     if (mode === 'tonal' && !tonalTask) {
-      handleNewTonalTask();
+      handleNewTonalTask(shouldPlaySound);
     }
     if (mode === 'progression' && !progressionTask) {
-      handleNewProgressionTask();
+      handleNewProgressionTask(shouldPlaySound);
     }
     if ((mode === 'standard' || mode === 'marathon') && !currentTask) {
-      handleNewTask();
+      handleNewTask(shouldPlaySound);
+    }
+
+    if (isFirstAppLoadRef.current) {
+      window.setTimeout(() => {
+        isFirstAppLoadRef.current = false;
+      }, 500);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
@@ -1773,18 +1986,43 @@ export default function App() {
       <div 
         className={`w-full ${mode === 'tonal' || mode === 'progression' ? 'max-w-6xl' : 'max-w-5xl'} flex flex-col gap-2.5 sm:gap-3`}
       >
-        {/* Top Control Bar: Left Settings Drawer Trigger + Theme Toggle + Mode Switcher */}
-        <div className="w-full flex items-center gap-2">
-          {/* Collapsible Left Settings Drawer Button Outside General Cloud */}
-          <button
-            onClick={() => setIsLeftDrawerOpen(true)}
-            className="flex items-center justify-center p-2.5 bg-slate-900/90 hover:bg-slate-800 active:scale-95 text-slate-200 border border-slate-800/80 rounded-xl transition cursor-pointer shrink-0 shadow-xs"
-            title="Настройки тренажера"
-            aria-label="Настройки"
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-          </button>
+        {/* Top Navigation Bar: Settings Drawer Button + Title + Statistics Widget at the VERY TOP */}
+        <header className="w-full flex items-center justify-between gap-2 bg-slate-900/90 border border-slate-800/80 rounded-2xl px-3 py-2 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {/* Settings Trigger */}
+            <button
+              onClick={() => setIsLeftDrawerOpen(true)}
+              className="flex items-center justify-center p-2 sm:p-2.5 bg-slate-950/80 hover:bg-slate-800 active:scale-95 text-slate-200 border border-slate-800 rounded-xl transition cursor-pointer shrink-0 shadow-xs"
+              title="Настройки тренажера"
+              aria-label="Настройки"
+            >
+              <SlidersHorizontal className="w-4 h-4 text-indigo-400" />
+            </button>
 
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs sm:text-sm font-bold text-slate-100 tracking-tight truncate">
+                  Сольфеджио & Гармония
+                </span>
+                <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded-md bg-indigo-500/20 text-indigo-300 font-mono font-semibold border border-indigo-500/30">
+                  PRO
+                </span>
+              </div>
+              <span className="text-[10px] sm:text-[11px] text-slate-400 truncate">
+                Слуховой тренажёр
+              </span>
+            </div>
+          </div>
+
+          {/* Statistics Counter Widget at the VERY top */}
+          <StatsCounterWidget
+            stats={stats}
+            onClick={() => setIsStatsModalOpen(true)}
+          />
+        </header>
+
+        {/* Training Mode Switcher Bar */}
+        <div className="w-full flex items-center gap-2">
           {/* General Cloud Container for Mode Switcher */}
           <div className="flex-1 bg-slate-900/90 border border-slate-800/80 rounded-xl p-1.5 flex items-center justify-between gap-1.5 shadow-xs">
             {/* Training Mode Switcher Tabs */}
@@ -1948,7 +2186,7 @@ export default function App() {
         </AnimatePresence>
 
         {/* Primary Interactive Training Zone with Anti-Slop Smooth Bezier Transitions */}
-        <main className={`w-full ${mode === 'pitch_memory' ? 'pb-4' : (mode === 'standard' || mode === 'marathon' ? 'pb-24 sm:pb-28' : 'pb-36 sm:pb-40')}`}>
+        <main className={`w-full ${mode === 'pitch_memory' ? 'pb-4' : (mode === 'progression' ? 'pb-16 sm:pb-20' : (mode === 'standard' || mode === 'marathon' ? 'pb-24 sm:pb-28' : 'pb-36 sm:pb-40'))}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={mode}
@@ -1996,7 +2234,7 @@ export default function App() {
                   degreeMarathonStreak={degreeMarathonStreak}
                   degreeMarathonBestStreak={degreeMarathonBestStreak}
                   isNewRecord={degreeMarathonStreak > 0 && degreeMarathonStreak === degreeMarathonBestStreak}
-                  onResetMarathon={() => setDegreeMarathonStreak(0)}
+                  onResetMarathon={handleResetDegreeMarathon}
                   isTwoNotes={degreeIsTwoNotes}
                   onToggleTwoNotes={handleToggleDegreeTwoNotes}
                 />
@@ -2022,9 +2260,7 @@ export default function App() {
                   onReveal={handleTonalReveal}
                   onSettingsChange={handleUpdateSettings}
                   onPlayCadence={handlePlayKeyCadence}
-                  onVisualNotes={(midis) => {
-                    setTonalActiveMidis(midis);
-                  }}
+                  onVisualNotes={handleSetTonalActiveMidis}
                   onPreviewDegree={handlePreviewTonalDegree}
                   onNewTask={handleNewTonalTask}
                   onReplay={handlePlayTonalChordOnly}
@@ -2047,7 +2283,8 @@ export default function App() {
                   onSettingsChange={handleUpdateSettings}
                   onPlayCadence={handlePlayKeyCadence}
                   onReveal={handleProgressionReveal}
-                  onOpenProgressionCatalog={() => setIsProgressionCatalogOpen(true)}
+                  onOpenProgressionCatalog={handleOpenProgressionCatalog}
+                  onSelectSpecificProgression={handleSelectProgressionTemplate}
                 />
               )}
 
@@ -2125,9 +2362,6 @@ export default function App() {
                     <span>Слушать построенное</span>
                   </button>
                 )}
-
-                {/* Spacer aligning with Repeat Harmonic below */}
-                <div className="w-11 sm:w-12 shrink-0 pointer-events-none" />
 
                 {/* Step-by-Step Add Note Button */}
                 <button
@@ -2230,7 +2464,7 @@ export default function App() {
             <div className="w-full flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={handleNewTask}
+                onClick={() => handleNewTask()}
                 className="flex-1 h-11 sm:h-12 flex items-center justify-center gap-2 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-semibold text-xs sm:text-sm rounded-lg shadow-sm border border-indigo-500 transition cursor-pointer"
                 title="Новое задание (Горячая клавиша: N)"
               >

@@ -479,10 +479,64 @@ class AudioEngine {
     startTime: number,
     duration: number,
     gainBoost: number,
-    settings: PlaybackSettings
+    settings: PlaybackSettings,
+    balance: number = settings.twoNotesBalance ?? 0
   ) {
+    if (midis.length === 2 && balance !== 0) {
+      this.playTwoNotes(midis[0], midis[1], startTime, duration, gainBoost, settings, false, balance);
+      return;
+    }
     for (const m of midis) {
       this.playSingleNote(m, startTime, duration, gainBoost, settings);
+    }
+  }
+
+  /**
+   * Plays two notes with adjustable balance between lower and upper sound.
+   * - balance = 0: equal volume (50 / 50)
+   * - balance < 0 (left): louder lower note, upper note becomes softer (down to 10%)
+   * - balance > 0 (right): louder upper note, lower note becomes softer (down to 10%)
+   */
+  public playTwoNotes(
+    midi1: number,
+    midi2: number,
+    startTime: number,
+    duration: number,
+    gainBoost: number,
+    settings: PlaybackSettings,
+    isArpeggio: boolean = false,
+    balance: number = settings.twoNotesBalance ?? 0
+  ) {
+    const lower = Math.min(midi1, midi2);
+    const upper = Math.max(midi1, midi2);
+
+    // Calculate dynamic gains based on balance in [-1.0 .. 1.0]
+    // Center (0): both 1.15
+    // Left (-1.0): lower 1.35, upper 0.08
+    // Right (+1.0): upper 1.35, lower 0.08
+    let lowerCoeff = 1.0;
+    let upperCoeff = 1.0;
+
+    if (balance < 0) {
+      // Slanted to lower sound
+      const factor = Math.abs(balance); // 0 .. 1
+      lowerCoeff = 1.0 + factor * 0.25; // up to 1.25
+      upperCoeff = Math.max(0.08, 1.0 - factor * 0.92); // down to 0.08
+    } else if (balance > 0) {
+      // Slanted to upper sound
+      const factor = balance; // 0 .. 1
+      upperCoeff = 1.0 + factor * 0.25; // up to 1.25
+      lowerCoeff = Math.max(0.08, 1.0 - factor * 0.92); // down to 0.08
+    }
+
+    if (isArpeggio) {
+      // Arpeggio: play lower sound first, then upper sound after 0.52s
+      this.playSingleNote(lower, startTime, duration, gainBoost * lowerCoeff, settings);
+      this.playSingleNote(upper, startTime + 0.52, duration, gainBoost * upperCoeff, settings);
+    } else {
+      // Harmonic: play both sounds simultaneously
+      this.playSingleNote(lower, startTime, duration, gainBoost * lowerCoeff, settings);
+      this.playSingleNote(upper, startTime, duration, gainBoost * upperCoeff, settings);
     }
   }
 

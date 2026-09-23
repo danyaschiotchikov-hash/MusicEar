@@ -289,27 +289,25 @@ export const VexFlowHarmonicTurnSnippet: React.FC<VexFlowHarmonicTurnSnippetProp
           const el = node as SVGElement;
           const currentStroke = el.getAttribute('stroke');
           const currentFill = el.getAttribute('fill');
+          const isFilled = currentFill && currentFill !== 'none';
 
-          if (currentStroke === '#f8fafc' || currentStroke === '#ffffff') {
-            el.setAttribute('stroke', '#e2e8f0');
-            el.setAttribute('stroke-width', '1');
-            el.setAttribute('stroke-linecap', 'round');
-          } else if (currentStroke === '#000000' || currentStroke === 'black' || !currentStroke) {
-            el.setAttribute('stroke', '#cbd5e1');
-            el.setAttribute('stroke-width', '1');
-          } else if (currentStroke === '#64748b') {
-            el.setAttribute('stroke', '#94a3b8');
-            el.setAttribute('stroke-width', '1');
-          }
-
-          if (currentFill === '#000000' || currentFill === 'black') {
+          if (isFilled) {
             el.setAttribute('fill', '#f1f5f9');
+            el.removeAttribute('stroke');
+            el.removeAttribute('stroke-width');
+          } else {
+            if (currentStroke === '#f8fafc' || currentStroke === '#ffffff') {
+              el.setAttribute('stroke', '#cbd5e1');
+            } else {
+              el.setAttribute('stroke', '#94a3b8');
+            }
+            el.setAttribute('stroke-width', '0.85');
           }
         });
 
         svgEl.querySelectorAll('text').forEach((textNode) => {
           textNode.setAttribute('fill', '#f8fafc');
-          textNode.style.fontWeight = '500';
+          textNode.style.fontWeight = '400';
         });
 
         // Draw Chord Signatures aligned on a single straight horizontal baseline
@@ -326,7 +324,7 @@ export const VexFlowHarmonicTurnSnippet: React.FC<VexFlowHarmonicTurnSnippetProp
             textEl.setAttribute('fill', isActive ? '#38bdf8' : '#f8fafc');
             textEl.setAttribute('font-family', 'Georgia, "Times New Roman", serif');
             textEl.setAttribute('font-size', '12px');
-            textEl.setAttribute('font-weight', '700');
+            textEl.style.fontWeight = '500';
             textEl.textContent = step.chordSymbol;
             svgEl.appendChild(textEl);
           }
