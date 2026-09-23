@@ -74,7 +74,7 @@ export const VexFlowHarmonicTurnSnippet: React.FC<VexFlowHarmonicTurnSnippetProp
       const startX = 54;
       const endPadding = 26;
       const calculatedWidth = Math.max(260, startX + stepCount * stepWidth + endPadding);
-      const totalHeight = 220;
+      const totalHeight = 240;
 
       const renderer = new Renderer(container, Renderer.Backends.SVG);
       renderer.resize(calculatedWidth, totalHeight);
@@ -168,6 +168,21 @@ export const VexFlowHarmonicTurnSnippet: React.FC<VexFlowHarmonicTurnSnippetProp
         });
         bNote.setLedgerLineStyle({ strokeStyle: '#e2e8f0', lineWidth: 1.1 });
 
+        // Native VexFlow Annotation for chord label under the chord
+        const chordAnn = new Annotation(step.chordSymbol);
+        chordAnn.setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
+        chordAnn.setJustification(Annotation.HorizontalJustify.CENTER);
+        chordAnn.setFont({
+          family: 'Georgia, "Times New Roman", serif',
+          size: 12,
+          weight: 'normal',
+        });
+        chordAnn.setStyle({
+          fillStyle: isActive ? '#38bdf8' : '#f8fafc',
+          strokeStyle: isActive ? '#38bdf8' : '#f8fafc',
+        });
+        bNote.addModifier(chordAnn, 0);
+
         // Active note highlighting
         if (isActive) {
           const activeStyle = { fillStyle: '#38bdf8', strokeStyle: '#38bdf8' };
@@ -218,6 +233,22 @@ export const VexFlowHarmonicTurnSnippet: React.FC<VexFlowHarmonicTurnSnippetProp
       const formatter = new Formatter();
       formatter.joinVoices([sopranoVoice, altoVoice]).joinVoices([tenorVoice, bassVoice]);
       formatter.format([sopranoVoice, altoVoice, tenorVoice, bassVoice], calculatedWidth - startX - endPadding);
+
+      // Align all chord annotations along a uniform horizontal baseline under the chords
+      const stemTips = bassNotes.map((n) => {
+        const ext = n.getStem()?.getExtents();
+        return ext ? ext.topY : (n.getYs()[0] || 0);
+      });
+      const maxStemTip = Math.max(...stemTips, 0);
+
+      bassNotes.forEach((n, idx) => {
+        const diff = (maxStemTip - stemTips[idx]) / 10;
+        const mods = n.getModifiers().filter((m) => m instanceof Annotation) as Annotation[];
+        mods.forEach((m) => {
+          const currentLine = (m as unknown as { textLine: number }).textLine || 0;
+          m.setTextLine(currentLine + diff);
+        });
+      });
 
       sopranoVoice.draw(context, topStave);
       altoVoice.draw(context, topStave);
@@ -306,28 +337,10 @@ export const VexFlowHarmonicTurnSnippet: React.FC<VexFlowHarmonicTurnSnippetProp
         });
 
         svgEl.querySelectorAll('text').forEach((textNode) => {
-          textNode.setAttribute('fill', '#f8fafc');
-          textNode.style.fontWeight = '400';
-        });
-
-        // Draw Chord Signatures aligned on a single straight horizontal baseline
-        turnSteps.forEach((step, relIdx) => {
-          const globalIdx = turn.startIndex + relIdx;
-          const isActive = activeStepIndex === globalIdx;
-          const bNote = bassNotes[relIdx];
-          if (bNote && svgEl) {
-            const x = bNote.getAbsoluteX();
-            const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            textEl.setAttribute('x', x.toString());
-            textEl.setAttribute('y', '200'); // Single fixed baseline Y in snippet
-            textEl.setAttribute('text-anchor', 'middle');
-            textEl.setAttribute('fill', isActive ? '#38bdf8' : '#f8fafc');
-            textEl.setAttribute('font-family', 'Georgia, "Times New Roman", serif');
-            textEl.setAttribute('font-size', '12px');
-            textEl.style.fontWeight = '500';
-            textEl.textContent = step.chordSymbol;
-            svgEl.appendChild(textEl);
+          if (!textNode.hasAttribute('fill')) {
+            textNode.setAttribute('fill', '#f8fafc');
           }
+          textNode.style.fontWeight = '400';
         });
 
         // Draw Measure Bar Lines (тактовые черты) in snippet

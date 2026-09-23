@@ -10,6 +10,7 @@ import {
   Stem,
   StaveTie,
   BarlineType,
+  Annotation,
 } from 'vexflow';
 import { RealizedProgression, identifyChordSeventh } from '../audio/harmonicProgressions';
 
@@ -135,7 +136,7 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
       const startX = 64;
       const endPadding = 24;
       const calculatedWidth = Math.max(340, startX + stepsCount * stepWidth + endPadding);
-      const totalHeight = 216;
+      const totalHeight = 250;
 
       const renderer = new Renderer(container, Renderer.Backends.SVG);
       renderer.resize(calculatedWidth, totalHeight);
@@ -148,8 +149,8 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
       // Stave position: startX 28 gives ample space for the brace accolade without clipping
       const staveX = 28;
       const topStaveY = 14;
-      // Distance of 122 eliminates stem collisions between alto and tenor
-      const bottomStaveY = 120;
+      // Distance of 100 ensures clean gap between alto and tenor stems
+      const bottomStaveY = 114;
       const staveWidth = calculatedWidth - 46;
 
       const topStave = new Stave(staveX, topStaveY, staveWidth);
@@ -199,12 +200,51 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
         });
         sNote.setLedgerLineStyle({ strokeStyle: '#94a3b8', lineWidth: 0.9 });
 
+        // Chord annotation labels using native VexFlow Annotation
+        const rawChordLabel = userStepSymbols?.[idx] || step.symbol;
+        const degreeText = getRomanDegreeNotation(rawChordLabel);
+        const funcText = formatChordNotation(rawChordLabel);
+
+        const chordAnn = new Annotation(degreeText);
+        chordAnn.setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
+        chordAnn.setJustification(Annotation.HorizontalJustify.CENTER);
+        chordAnn.setFont({
+          family: 'Georgia, "Times New Roman", serif',
+          size: 13,
+          weight: 'normal',
+        });
+        chordAnn.setStyle({
+          fillStyle: isActive ? '#38bdf8' : '#c7d2fe',
+          strokeStyle: isActive ? '#38bdf8' : '#c7d2fe',
+        });
+
+        let funcAnn: Annotation | null = null;
+        if (funcText && funcText !== degreeText) {
+          funcAnn = new Annotation(`(${funcText})`);
+          funcAnn.setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
+          funcAnn.setJustification(Annotation.HorizontalJustify.CENTER);
+          funcAnn.setFont({
+            family: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
+            size: 10,
+            weight: 'normal',
+          });
+          funcAnn.setStyle({
+            fillStyle: isActive ? '#38bdf8' : '#94a3b8',
+            strokeStyle: isActive ? '#38bdf8' : '#94a3b8',
+          });
+        }
+
         if (showOnlySoprano) {
           const bRest = new StaveNote({
             clef: 'bass',
             keys: ['d/3'],
             duration: 'qr',
           });
+
+          bRest.addModifier(chordAnn, 0);
+          if (funcAnn) {
+            bRest.addModifier(funcAnn, 0);
+          }
 
           if (isActive) {
             sNote.setStyle({ fillStyle: '#38bdf8', strokeStyle: '#38bdf8' });
@@ -241,6 +281,11 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
             stemDirection: Stem.DOWN,
           });
           bNote.setLedgerLineStyle({ strokeStyle: '#94a3b8', lineWidth: 0.9 });
+
+          bNote.addModifier(chordAnn, 0);
+          if (funcAnn) {
+            bNote.addModifier(funcAnn, 0);
+          }
 
           if (isActive) {
             const activeStyle = { fillStyle: '#38bdf8', strokeStyle: '#38bdf8' };
@@ -302,16 +347,34 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
       if (showOnlySoprano) {
         formatter.joinVoices([sopranoVoice]).joinVoices([bassVoice]);
         formatter.format([sopranoVoice, bassVoice], calculatedWidth - startX - endPadding);
-        sopranoVoice.draw(context, topStave);
-        bassVoice.draw(context, bottomStave);
       } else if (altoVoice && tenorVoice) {
         formatter.joinVoices([sopranoVoice, altoVoice]).joinVoices([tenorVoice, bassVoice]);
         formatter.format([sopranoVoice, altoVoice, tenorVoice, bassVoice], calculatedWidth - startX - endPadding);
-        sopranoVoice.draw(context, topStave);
+      }
+
+      // Align all chord annotations along a uniform horizontal baseline under the chords
+      const stemTips = bassNotes.map((n) => {
+        const ext = n.getStem()?.getExtents();
+        return ext ? ext.topY : (n.getYs()[0] || 0);
+      });
+      const maxStemTip = Math.max(...stemTips, 0);
+
+      bassNotes.forEach((n, idx) => {
+        const diff = (maxStemTip - stemTips[idx]) / 10;
+        const mods = n.getModifiers().filter((m) => m instanceof Annotation) as Annotation[];
+        mods.forEach((m) => {
+          const currentLine = (m as unknown as { textLine: number }).textLine || 0;
+          m.setTextLine(currentLine + diff);
+        });
+      });
+
+      // Draw voices to staves (annotations are natively drawn by VexFlow with the bottom voice)
+      sopranoVoice.draw(context, topStave);
+      if (!showOnlySoprano && altoVoice && tenorVoice) {
         altoVoice.draw(context, topStave);
         tenorVoice.draw(context, bottomStave);
-        bassVoice.draw(context, bottomStave);
       }
+      bassVoice.draw(context, bottomStave);
 
       const ties: StaveTie[] = [];
       for (let i = 0; i < steps.length - 1; i++) {
@@ -401,44 +464,29 @@ export const ProgressionGrandStaff: React.FC<ProgressionGrandStaffProps> = React
           }
         });
 
-        // Render chord labels under the bottom stave strictly as scale degrees (ступени) + functions
-        const degreeBaselineY = bottomStaveY + 52;
-        const funcBaselineY = bottomStaveY + 66;
+        // Interactive step playback on note or annotation click
+        if (onPlayStep) {
+          steps.forEach((_, idx) => {
+            const sEl = sopranoNotes[idx]?.getSVGElement();
+            const bEl = bassNotes[idx]?.getSVGElement();
+            [sEl, bEl].forEach((el) => {
+              if (el) {
+                el.style.cursor = 'pointer';
+                el.onclick = () => onPlayStep(idx);
+              }
+            });
 
-        steps.forEach((step, idx) => {
-          const refNote = sopranoNotes[idx] || bassNotes[idx];
-          if (!refNote) return;
-          const noteX = refNote.getAbsoluteX();
-          const rawChordLabel = userStepSymbols?.[idx] || step.symbol;
-          const degreeText = getRomanDegreeNotation(rawChordLabel);
-          const funcText = formatChordNotation(rawChordLabel);
-
-          // 1. Primary scale degree label (e.g. I, IV₆, I⁶/₄, V₇)
-          const degEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          degEl.setAttribute('x', String(noteX));
-          degEl.setAttribute('y', String(degreeBaselineY));
-          degEl.setAttribute('text-anchor', 'middle');
-          degEl.setAttribute('fill', '#c7d2fe');
-          degEl.setAttribute('font-size', '13px');
-          degEl.setAttribute('font-family', 'Georgia, "Times New Roman", serif');
-          degEl.style.fontWeight = '500';
-          degEl.textContent = degreeText;
-          svgEl.appendChild(degEl);
-
-          // 2. Functional label (e.g. T, S₆, K⁶/₄, D₇) if distinguishable
-          if (funcText && funcText !== degreeText) {
-            const funcEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            funcEl.setAttribute('x', String(noteX));
-            funcEl.setAttribute('y', String(funcBaselineY));
-            funcEl.setAttribute('text-anchor', 'middle');
-            funcEl.setAttribute('fill', '#94a3b8');
-            funcEl.setAttribute('font-size', '10px');
-            funcEl.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif');
-            funcEl.style.fontWeight = '400';
-            funcEl.textContent = `(${funcText})`;
-            svgEl.appendChild(funcEl);
-          }
-        });
+            const mods = bassNotes[idx]?.getModifiers().filter((m) => m instanceof Annotation) as Annotation[];
+            mods.forEach((mod) => {
+              const id = mod.getAttribute?.('id');
+              const el = id ? svgEl.getElementById(id) : null;
+              if (el) {
+                (el as SVGElement).style.cursor = 'pointer';
+                (el as SVGElement).onclick = () => onPlayStep(idx);
+              }
+            });
+          });
+        }
 
         // Ensure all music text (clefs, keys) are elegant, natural, and never bold
         svgEl.querySelectorAll('text').forEach((textNode) => {
